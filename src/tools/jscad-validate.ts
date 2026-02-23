@@ -1,6 +1,6 @@
 import { Module } from 'module';
 import path from 'path';
-import { ToolDefinition, ToolDescriptor, ToolExecutionContext } from './types';
+import { ToolDefinition, ToolDescriptor } from '../config';
 
 const descriptor: ToolDescriptor = {
   type: 'function',
@@ -9,11 +9,11 @@ const descriptor: ToolDescriptor = {
     description: 'Validate JSCAD by executing it and returning any errors.',
     parameters: {
       type: 'object',
-      required: ['source'],
+      required: ['file'],
       properties: {
-        source: {
+        file: {
           type: 'string',
-          description: 'Full JSCAD source code to validate.',
+          description: 'Path to the JSCAD file to validate.',
         },
       },
     },
@@ -23,13 +23,15 @@ const descriptor: ToolDescriptor = {
 const formatError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-const run = async (args: Record<string, unknown>, context: ToolExecutionContext): Promise<string> => {
-  const source = typeof args.source === 'string' ? args.source.trim() : '';
-  if (!source) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "source" must be a non-empty string.' });
+const run = async (args: Record<string, unknown>): Promise<string> => {
+  const file = typeof args.file === 'string' ? args.file.trim() : '';
+  if (!file) {
+    return JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' });
   }
   try {
-    await context.compileJscad(source);
+    const fs = await import('fs/promises');
+    const source = await fs.readFile(file, 'utf-8');
+    await compileJscad(source);
     return JSON.stringify({ ok: true, error: null });
   } catch (error) {
     return JSON.stringify({ ok: false, error: formatError(error) });

@@ -1,0 +1,10 @@
+{
+  "ext": "ts,ejs",
+  "watch": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "verbose": true,
+  "ignore": "dist/*",
+  "exec": "npm run build"
+}

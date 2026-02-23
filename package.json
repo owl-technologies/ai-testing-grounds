@@ -2,13 +2,13 @@
   "name": "ai-testing-grounds",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/cli.js",
   "scripts": {
     "cli": "ts-node --files src/cli.ts",
     "start": "bash -lc 'source env.sh && ts-node --files src/cli.ts \"$@\"' --",
     "example": "bash -lc 'source env.sh && ts-node --files src/cli.ts \"$@\"' -- --openai --goal \"create a bicycle wheel model\" --file jscad/wheel.jscad --max-iterations 10",
     "build": "tsc",
-    "tests": "./run-test.sh"
+    "test": "./run-test.sh"
   },
   "ts-node": {
     "files": true
@@ -24,6 +24,7 @@
     "@jscad/regl-renderer": "^2.6.14",
     "@openai/agents": "^0.4.15",
     "kiss-framework": "^1.3.4",
+    "nodemon": "^3.1.14",
     "ollama": "^0.6.3",
     "openai-agents-js": "^0.1.9",
     "zod": "^4.3.6"

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path/win32';
-import { ToolDefinition, ToolDescriptor, ToolExecutionContext } from './types';
+import { ToolDefinition, ToolDescriptor } from '../config';import { compileJscad } from './jscad-validate';
+;
 
 const descriptor: ToolDescriptor = {
   type: 'function',
@@ -23,7 +24,7 @@ const descriptor: ToolDescriptor = {
 const formatError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-const run = async (args: Record<string, unknown>, context: ToolExecutionContext): Promise<string> => {
+const run = async (args: Record<string, unknown>): Promise<string> => {
   const source = typeof args.source === 'string' ? args.source.trim() : '';
   if (!source) {
     return JSON.stringify({ ok: false, error: 'Invalid tool input: "source" must be a non-empty string.' });
@@ -45,7 +46,7 @@ const run = async (args: Record<string, unknown>, context: ToolExecutionContext)
       });
     }
 
-    const geometry = await context.compileJscad(source);
+    const geometry = await compileJscad(source);
     const solids = Array.isArray(geometry) ? geometry : [geometry];
     const entities = entitiesFromSolids({}, ...solids);
 
@@ -70,9 +71,10 @@ const run = async (args: Record<string, unknown>, context: ToolExecutionContext)
     const render = prepareRender(renderOptions);
     render(renderOptions);
 
-    const outputPath = context.writeRenderOutput((nextPath) => {
+    const tmpPath = path.join(process.cwd(), 'jscad-render.png');
+    const outputPath = writeRenderOutput((nextPath) => {
       writeContextToFile(gl, width, height, 4, nextPath);
-    });
+    }, tmpPath);
 
     if (!outputPath) {
       return JSON.stringify({ ok: false, error: 'No output path available for rendering.' });
