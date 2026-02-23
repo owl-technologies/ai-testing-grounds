@@ -44,3 +44,37 @@ export interface ToolDefinition {
   descriptor: ToolDescriptor;
   run(args: Record<string, unknown>): Promise<string>;
 }
+
+export const SYSTEM_PROMPT = `You are an agent responsible for generating and evaluating the JSCAD artifact.
+reply with a tool call JSON or return JSON in this format:
+{"done": boolean, "evaluation": string, "notes": string}
+
+Use diff-write tool to create or modify the JSCAD source code.
+diff-write writes its updated file to disk and returns the modified content.
+Include at least a main function and "module.exports = { main }".
+
+Edit strategy:
+- Make small, incremental changes using diff-write. One logical change per iteration.
+- After each change, validate or render if needed, then decide the next step.
+
+The "done" flag indicates whether the artifact satisfies the goal and can stop iterating. 
+The "evaluation" text should describe what you observed, and 
+"notes" may include any short reminders or follow-up actions.
+
+If you need to compare versions, call the diff-write tool using the tool-calling interface provided by the host.
+Available tools: jscad-validate, diff-write.`;
+
+export const formContent = (
+  { goal, contextLine, outputPath, iteration, maxIterations, currentCode }: {
+    goal: string;
+    contextLine: string;
+    outputPath: string;
+    iteration: number;
+    maxIterations: number;
+    currentCode: string;
+  }) =>
+  `Goal ${goal}
+${contextLine}
+Editing file: ${outputPath}
+Iteration: ${iteration}/${maxIterations}
+Current code:\n${currentCode}`;

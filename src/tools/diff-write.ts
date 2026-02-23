@@ -9,7 +9,7 @@ const descriptor: ToolDescriptor = {
     description: 'Return a simple line diff between two strings and write the updated content to disk.',
     parameters: {
       type: 'object',
-      required: ['before', 'after'],
+      required: ['before', 'after', 'path'],
       properties: {
         before: {
           type: 'string',

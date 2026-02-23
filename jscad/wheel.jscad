@@ -1,37 +1,40 @@
-// Hub at the wheel center
-const hubDiameter = 10;
-const wheelThickness = 5;
-const hubHeight = 2;
-const hub = roundedCuboid({ size: [hubDiameter, hubDiameter, wheelThickness + hubHeight], roundRadius: hubDiameter / 2 });
-const hubPlaced = translate([ -hubDiameter / 2, -hubDiameter / 2, wheelThickness ], hub);
+const jscad = require('@jscad/modeling')
+const { colorize, hslToRgb } = jscad.colors
+const { translate, translateX, translateY, translateZ, rotateX, rotateY, rotateZ } = jscad.transforms
+const { union, subtract } = jscad.booleans
+const { roundedRectangle, cuboid, roundedCuboid } = jscad.primitives
+const { extrudeLinear } = jscad.extrusions
+const { degToRad } = jscad.utils
 
-// Rim
-const rimRadius = 15;
-const rimHeight = 3;
-const rim = extrudeLinear({ height: rimHeight }, roundedRectangle({ size: [rimRadius * 2, rimRadius * 2], roundRadius: rimRadius }));
+function main () {
+  // Minimal initial wheel placeholder: a simple hollow disk using cylinders
+  // Outer rim as a cylinder
+  const rimOuterRadius = 60
+  const rimHeight = 6
+  const rimOuter = jscad.primitives.cylinder({ height: rimHeight, radius: rimOuterRadius, segments: 64 })
+  // Inner hole to create hollow rim
+  const rimHoleRadius = 40
+  const rimHole = jscad.primitives.cylinder({ height: rimHeight + 2, radius: rimHoleRadius, segments: 64 })
+  const rim = subtract(rimOuter, rimHole)
+  // Simple hub at center
+  const hubRadius = 6
+  const hubHeight = 8
+  const hub = jscad.primitives.cylinder({ height: hubHeight, radius: hubRadius, segments: 32 })
 
-// Tire
-const tireThickness = 1;
-const spokeCount = 30;
-const spokeAngle = 360 / spokesCount;
-const tireRadius = rimRadius + spokeCount * (spokeLength + tireThickness);
-const tire = cylinder({ height: hubHeight, insideRadius: rimRadius, outsideRadius: tireRadius });
-
-// Spoke
-const spokeLength = 5;
-const spokeWidth = 1;
-const spokeAngle = 360 / spokesCount;
-const spokeStart = -(spokeCount / 2) * spokeAngle;
-
-const spoke = cylinder({ height: spokeLength, insideRadius: rimRadius, outsideRadius: rimRadius + spokeWidth });
-const spokeRotated = rotateY(degToRad(spokeStart))(spoke);
-
-// Assemble wheel (rim + hub + tire + spokes)
-const wheel = union(union(rim, hubPlaced), tire);
-for (let i = 0; i < spokeCount; i++) {
-  wheel = union(wheel, spokeRotated);
-  wheel = translate([rimRadius * Math.cos(degToRad(i * spokeAngle)), rimRadius * Math.sin(degToRad(i * spokeAngle), 0], spokeRotated);
+  // Assemble a few simple spokes (not full wheel, just a stylized approximation)
+  const spokeCount = 12
+  const spokeLength = rimOuterRadius - hubRadius - 6
+  const spokeThickness = 1.8
+  const spokeDepth = 1.6
+  const spoke = jscad.primitives.cuboid({ size: [spokeLength, spokeDepth, spokeThickness] })
+  const spokes = []
+  for (let i = 0; i < spokeCount; i++) {
+    const angle = (i / spokeCount) * Math.PI * 2
+    const s = jscad.transforms.rotateZ(angle, jscad.transforms.translate([hubRadius, 0, 0], spoke))
+    spokes.push(s)
+  }
+  const wheel = union(rim, hub, ...spokes)
+  return wheel
 }
-return wheel;
 
 module.exports = { main }

@@ -1,9 +1,11 @@
 import { colors } from 'kiss-framework';
 import { Ollama } from 'ollama';
 import {
+  formContent,
   OLLAMA_HOST,
   SingleAgentStepOptions,
   SingleAgentStepResult,
+  SYSTEM_PROMPT,
   ToolCall,
 } from '../config';
 import { executeAgentTool, getAgentToolSchemas, isAgentTool } from '../tools';
@@ -14,49 +16,12 @@ type OllamaChatMessage = {
   tool_calls?: ToolCall[];
 };
 
-const DEFAULT_ANALYST_MODEL = 'qwen2.5-coder:latest'// 'mistral:latest'; // 'qwen2.5-coder:latest';
-
-const SYSTEM_PROMPT = `You are an agent responsible for generating and evaluating the JSCAD artifact.
-Call a tool or return JSON in this format:
-{"done": boolean, "evaluation": string, "notes": string}
-
-Use diff-write tool to create or modify the JSCAD source code.
-diff-write writes its updated file to disk and returns the modified content.
-Include at least a main function and "module.exports = { main }".
-
-Edit strategy:
-- Make small, incremental changes using diff-write. One logical change per iteration.
-- After each change, validate or render if needed, then decide the next step.
-
-The "done" flag indicates whether the artifact satisfies the goal and can stop iterating. 
-The "evaluation" text should describe what you observed, and 
-"notes" may include any short reminders or follow-up actions.
-
-If you need to compare versions, call the diff-write tool using the tool-calling interface provided by the host.
-Available tools: jscad-validate, diff-write.`;
-
-const formContent = (
-  { goal, contextLine, outputPath, iteration, maxIterations, currentCode }: {
-    goal: string;
-    contextLine: string;
-    outputPath: string;
-    iteration: number;
-    maxIterations: number;
-    currentCode: string;
-  }) =>
-  `Goal ${goal}
-${contextLine}
-Editing file: ${outputPath}
-Iteration: ${iteration}/${maxIterations}
-Current code:\n${currentCode}`;
+const DEFAULT_MODEL = 'qwen2.5-coder:latest'// 'mistral:latest'; // 'qwen2.5-coder:latest';
 
 export class JscadEditorAgent {
-  private lastOutputPath = '';
 
   async runAgent(input: SingleAgentStepOptions): Promise<SingleAgentStepResult> {
-    this.lastOutputPath = input.outputPath;
-
-    const model = DEFAULT_ANALYST_MODEL;
+    const model = DEFAULT_MODEL;
     const contextLine = input.context ? `Context: ${input.context}\n` : '';
     const userContent = formContent({
       goal: input.goal,
@@ -66,7 +31,7 @@ export class JscadEditorAgent {
       maxIterations: input.maxIterations,
       currentCode: input.currentCode,
     });
-    const ollama = new Ollama({ host : OLLAMA_HOST});
+    const ollama = new Ollama({ host: OLLAMA_HOST });
     const tools = getAgentToolSchemas();
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -87,7 +52,7 @@ export class JscadEditorAgent {
     });
 
     const firstMessage = response.message as OllamaChatMessage | undefined;
-    const {content, ...rest} = firstMessage || {};
+    const { content, ...rest } = firstMessage || {};
     console.debug('response.message from Ollama:', colors.yellow(JSON.stringify(firstMessage, null, 2)));
     const prettyContent = firstMessage?.content
       ? firstMessage.content.replace(/\\n/g, '\n').replace(/\\"/g, '"')
@@ -100,7 +65,7 @@ export class JscadEditorAgent {
 
     const toolCalls = this.extractToolCallsFromMessage(firstMessage);
 
-    console.debug('Extracted tool calls:', colors.blue(JSON.stringify(toolCalls, null, 2)));
+    console.debug('Extracted tool calls:', toolCalls?.length? colors.blue(JSON.stringify(toolCalls, null, 2)): colors.red('None'));
     const toolCall = toolCalls?.[0];
     if (toolCall) {
       const normalized = this.normalizeToolCall(toolCall);
@@ -124,6 +89,7 @@ export class JscadEditorAgent {
     let parsed = this.extractAgentJson(raw);
 
     if (toolOutput) {
+      console.debug(`Sending to ollama. Tool output: ${colors.cyan(toolOutput)}`);
       const followUp = await ollama.chat({
         model,
         messages,
