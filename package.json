@@ -7,6 +7,7 @@
     "cli": "ts-node --files src/cli.ts",
     "start": "bash -lc 'source env.sh && ts-node --files src/cli.ts \"$@\"' --",
     "example": "bash -lc 'source env.sh && ts-node --files src/cli.ts \"$@\"' -- --openai --goal \"create a bicycle wheel model\" --file jscad/wheel.jscad --max-iterations 10",
+    "example-openai": " npm start --  --openai --goal \"improve this bicycle wheel model\" --file jscad/wheel.jscad --max-iterations 10",
     "build": "tsc",
     "test": "./run-test.sh"
   },

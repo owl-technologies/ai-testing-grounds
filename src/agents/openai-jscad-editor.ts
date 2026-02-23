@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { executeAgentTool, getAgentToolSchemas } from '../tools';
 import { formContent, SingleAgentStepOptions, SingleAgentStepResult, SYSTEM_PROMPT } from '../config';
 
-const DEFAULT_MODEL = 'gpt-5-nano';
+const DEFAULT_MODEL = 'gpt-5-mini';
 
 type ToolState = {
   toolOutput?: string;

@@ -58,64 +58,44 @@ function main () {
   const axlePlaced = jscad.transforms.translate([0, 0, 0], axle)
   const axleColored = colorize([0.2, 0.2, 0.25], axlePlaced)
 
-  // Assemble spokes with a tapered profile (thicker near the hub, thinner towards the rim)
+  // Assemble spokes: switched from cuboids to rounded rods for a smoother look
   // Use the rim hole radius to determine spoke length so spokes meet the inner rim surface
   const spokeLength = rimHoleRadius - hubRadius - 1
   const spokes = []
   for (let i = 0; i < spokeCount; i++) {
     const angle = (i / spokeCount) * Math.PI * 2
-
+    // create a rod along X by making a cylinder and rotating it to align with the X axis
+    let rod = jscad.primitives.cylinder({ height: spokeLength, radius: spokeRadius, segments: 24 })
     // compute tilt so the inner end reaches the flange Z position (alternate left/right flange)
     const flangeZ = (i % 2 === 0) ? -hubHeight / 2 : hubHeight / 2
+    // tilt based on geometry: inner end (at -spokeLength/2) will have z = -sin(tilt)*spokeLength/2
     let tiltArg = (-2 * flangeZ) / spokeLength
     if (tiltArg > 0.9) tiltArg = 0.9
     if (tiltArg < -0.9) tiltArg = -0.9
     const tilt = Math.asin(tiltArg)
+    // rotate the rod into X-axis and apply the small tilt before translating. Doing rotations before translate keeps the spoke geometry stable
+    rod = jscad.transforms.rotateY(-Math.PI / 2 + tilt, rod)
+    // position so inner end starts at the hub radius (centered along the rod)
+    const spokeCenterX = hubRadius + spokeLength / 2
+    let s = jscad.transforms.translate([spokeCenterX, 0, 0], rod)
+    s = jscad.transforms.rotateZ(angle, s)
+    spokes.push(s)
 
-    // create tapered spoke by composing two overlapping cylinders: inner thicker segment + outer thinner segment
-    const innerSegmentRatio = 0.35
-    const innerLength = spokeLength * innerSegmentRatio
-    const outerLength = spokeLength - innerLength
-    const innerRadius = spokeRadius * 1.6
-    const outerRadius = spokeRadius
-
-    // inner (near-hub) segment
-    let innerRod = jscad.primitives.cylinder({ height: innerLength, radius: innerRadius, segments: 24 })
-    innerRod = jscad.transforms.rotateY(-Math.PI / 2 + tilt, innerRod)
-    const innerCenterX = hubRadius + innerLength / 2
-    innerRod = jscad.transforms.translate([innerCenterX, 0, 0], innerRod)
-    innerRod = jscad.transforms.rotateZ(angle, innerRod)
-
-    // outer (towards rim) segment
-    let outerRod = jscad.primitives.cylinder({ height: outerLength, radius: outerRadius, segments: 24 })
-    outerRod = jscad.transforms.rotateY(-Math.PI / 2 + tilt, outerRod)
-    const outerCenterX = hubRadius + innerLength + outerLength / 2
-    outerRod = jscad.transforms.translate([outerCenterX, 0, 0], outerRod)
-    outerRod = jscad.transforms.rotateZ(angle, outerRod)
-
-    // combine tapered segments
-    const spoke = union(innerRod, outerRod)
-    spokes.push(spoke)
-
-    // Add a small spherical cap at the rim end for nicer joins
-    const capRadius = outerRadius * 1.6
+    // Add small end caps (spherical) at both ends of each spoke for nicer joins
+    const capRadius = spokeRadius * 1.6
+    const innerCap = jscad.primitives.sphere({ radius: capRadius, segments: 24 })
     const outerCap = jscad.primitives.sphere({ radius: capRadius, segments: 24 })
-    let outerPlaced = jscad.transforms.rotateY(tilt, outerCap)
+    const innerCapX = hubRadius + 1
     const outerCapX = rimHoleRadius - 1
+    // Place caps by applying the tilt rotation first (so their local axes align), then translating out along X and finally rotating around the wheel
+    let innerPlaced = jscad.transforms.rotateY(tilt, innerCap)
+    innerPlaced = jscad.transforms.translate([innerCapX, 0, 0], innerPlaced)
+    innerPlaced = jscad.transforms.rotateZ(angle, innerPlaced)
+    let outerPlaced = jscad.transforms.rotateY(tilt, outerCap)
     outerPlaced = jscad.transforms.translate([outerCapX, 0, 0], outerPlaced)
     outerPlaced = jscad.transforms.rotateZ(angle, outerPlaced)
+    spokes.push(innerPlaced)
     spokes.push(outerPlaced)
-
-    // Add a small nipple at the rim inner surface where the spoke would attach
-    const nippleRadius = outerRadius * 1.4
-    const nippleLength = 1.6
-    let nipple = jscad.primitives.cylinder({ height: nippleLength, radius: nippleRadius, segments: 24 })
-    // orient radial along X so it sits into the rim wall
-    nipple = jscad.transforms.rotateY(-Math.PI / 2, nipple)
-    const nippleX = rimHoleRadius - 0.8
-    nipple = jscad.transforms.translate([nippleX, 0, 0], nipple)
-    nipple = jscad.transforms.rotateZ(angle, nipple)
-    spokes.push(nipple)
   }
 
   // Optional tire around the rim for visual heft
