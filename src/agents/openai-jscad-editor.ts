@@ -6,19 +6,22 @@ import { writeRenderOutput } from '../tools/jscad-render-2d';
 import { compileJscad } from '../tools/jscad-validate';
 import { executeAgentTool, getAgentToolSchemas } from '../tools';
 
-const SINGLE_AGENT_SYSTEM_PROMPT = `You are an agent responsible for generating and evaluating the JSCAD artifact.
-Return JSON only in this format:
-{"jscad": string, "done": boolean, "evaluation": string, "notes": string}
+const SYSTEM_PROMPT = `You are an agent responsible for generating and evaluating the JSCAD artifact.
+Call a tool or return JSON in this format:
+{"done": boolean, "evaluation": string, "notes": string}
 
-Provide the full JS/JSCAD source in "jscad" when you propose changes.
+Use diff-write tool to create or modify the JSCAD source code.
+diff-write writes its updated file to disk and returns the modified content.
 Include at least a main function and "module.exports = { main }".
 
 Edit strategy:
-- Make small, incremental changes. One logical change per iteration.
+- Make small, incremental changes using diff-write. One logical change per iteration.
 - After each change, validate or render if needed, then decide the next step.
 
-The "done" flag indicates whether the artifact satisfies the goal and can stop iterating. The "evaluation" text should describe what you observed, and "notes" may include any short reminders or follow-up actions.
-diff-write writes its updated file to disk and returns the modified content.
+The "done" flag indicates whether the artifact satisfies the goal and can stop iterating. 
+The "evaluation" text should describe what you observed, and 
+"notes" may include any short reminders or follow-up actions.
+
 If you need to compare versions, call the diff-write tool using the tool-calling interface provided by the host.
 Available tools: jscad-validate, diff-write.`;
 
@@ -122,7 +125,7 @@ ${input.currentCode}`;
 
     const agent = new Agent({
       name: 'JSCAD agent',
-      instructions: SINGLE_AGENT_SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       tools,
       model,
     });
