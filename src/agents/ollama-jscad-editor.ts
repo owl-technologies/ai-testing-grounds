@@ -16,7 +16,7 @@ type OllamaChatMessage = {
   tool_calls?: ToolCall[];
 };
 
-const DEFAULT_MODEL = 'qwen2.5-coder:latest'// 'mistral:latest'; // 'qwen2.5-coder:latest';
+const DEFAULT_MODEL = 'qwen3-vl:8b'// 'mistral:latest'; // 'qwen2.5-coder:latest';
 
 export class JscadEditorAgent {
 
@@ -97,6 +97,15 @@ export class JscadEditorAgent {
         stream: false,
         keep_alive: -1,
       });
+      const followUpMessage = followUp.message as OllamaChatMessage | undefined;
+      const { content: followUpContent } = followUpMessage || {};
+      console.debug('followUp.message from Ollama:', colors.yellow(JSON.stringify(followUpMessage, null, 2)));
+      const prettyFollowUp = followUpContent
+        ? followUpContent.replace(/\\n/g, '\n').replace(/\\"/g, '"')
+        : undefined;
+      if (prettyFollowUp) {
+        console.debug('followUp.message.content (pretty):', colors.yellow(prettyFollowUp));
+      }
       raw = followUp.message?.content?.trim() || '';
       parsed = this.extractAgentJson(raw);
     }

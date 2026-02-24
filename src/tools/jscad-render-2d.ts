@@ -1,7 +1,6 @@
-import fs from 'fs';
-import path from 'path/win32';
-import { ToolDefinition, ToolDescriptor } from '../config';import { compileJscad } from './jscad-validate';
-;
+import path from 'path';
+import { ToolDefinition, ToolDescriptor } from '../config';
+import { compileJscad } from './jscad-validate';
 
 const descriptor: ToolDescriptor = {
   type: 'function',
@@ -10,11 +9,11 @@ const descriptor: ToolDescriptor = {
     description: 'Render JSCAD to a PNG 2D snapshot when possible.',
     parameters: {
       type: 'object',
-      required: ['source'],
+      required: ['file'],
       properties: {
-        source: {
+        file: {
           type: 'string',
-          description: 'Full JSCAD source code to render.',
+          description: 'Path to a JSCAD file to render.',
         },
       },
     },
@@ -25,11 +24,14 @@ const formatError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 const run = async (args: Record<string, unknown>): Promise<string> => {
-  const source = typeof args.source === 'string' ? args.source.trim() : '';
-  if (!source) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "source" must be a non-empty string.' });
+  const file = typeof args.file === 'string' ? args.file.trim() : '';
+  if (!file) {
+    return JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' });
   }
   try {
+    const fs = await import('fs/promises');
+    const filePath = path.resolve(file);
+    const source = await fs.readFile(filePath, 'utf-8');
     const rendererModules = loadRendererModules();
     if (!rendererModules.ok) {
       return JSON.stringify({ ok: false, error: rendererModules.error });
@@ -50,8 +52,75 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     const solids = Array.isArray(geometry) ? geometry : [geometry];
     const entities = entitiesFromSolids({}, ...solids);
 
+    const { measurements } = require('@jscad/modeling');
+    const { measureBoundingBox } = measurements;
+
     const perspectiveCamera = cameras.perspective;
     const camera = { ...perspectiveCamera.defaults };
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let minZ = 0;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let maxZ = 0;
+    let hasBounds = false;
+    let hasZBounds = false;
+    for (const solid of solids) {
+      const bounds = measureBoundingBox(solid);
+      if (!Array.isArray(bounds) || bounds.length < 2) {
+        continue;
+      }
+      const [min, max] = bounds as number[][];
+      if (!min || !max) {
+        continue;
+      }
+      if (Number.isFinite(min[0]) && Number.isFinite(max[0])) {
+        minX = Math.min(minX, min[0]);
+        maxX = Math.max(maxX, max[0]);
+        hasBounds = true;
+      }
+      if (Number.isFinite(min[1]) && Number.isFinite(max[1])) {
+        minY = Math.min(minY, min[1]);
+        maxY = Math.max(maxY, max[1]);
+        hasBounds = true;
+      }
+      if (Number.isFinite(min[2]) && Number.isFinite(max[2])) {
+        minZ = hasZBounds ? Math.min(minZ, min[2]) : min[2];
+        maxZ = hasZBounds ? Math.max(maxZ, max[2]) : max[2];
+        hasZBounds = true;
+        hasBounds = true;
+      }
+    }
+    if (hasBounds) {
+      if (!hasZBounds) {
+        minZ = 0;
+        maxZ = 0;
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const centerZ = (minZ + maxZ) / 2;
+      const sizeX = maxX - minX;
+      const sizeY = maxY - minY;
+      const sizeZ = maxZ - minZ;
+      const radius = Math.max(0.5 * Math.hypot(sizeX, sizeY, sizeZ), 1);
+      const fov = typeof camera.fov === 'number' ? camera.fov : Math.PI / 4;
+      const aspect = width / height;
+      const fovX = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+      const limitingFov = Math.min(fov, fovX);
+      const distance = radius / Math.sin(limitingFov / 2);
+      const dirX = 1;
+      const dirY = 1;
+      const dirZ = Math.SQRT2;
+      const dirLen = Math.hypot(dirX, dirY, dirZ);
+      const scaledDistance = distance * 1.15;
+      camera.target = [centerX, centerY, centerZ];
+      camera.position = [
+        centerX + (dirX / dirLen) * scaledDistance,
+        centerY + (dirY / dirLen) * scaledDistance,
+        centerZ + (dirZ / dirLen) * scaledDistance,
+      ];
+      camera.up = [0, 0, 1];
+    }
     perspectiveCamera.setProjection(camera, camera, { width, height });
     perspectiveCamera.update(camera, camera);
 
@@ -71,14 +140,11 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     const render = prepareRender(renderOptions);
     render(renderOptions);
 
-    const tmpPath = path.join(process.cwd(), 'jscad-render.png');
-    const outputPath = writeRenderOutput((nextPath) => {
-      writeContextToFile(gl, width, height, 4, nextPath);
-    }, tmpPath);
-
-    if (!outputPath) {
-      return JSON.stringify({ ok: false, error: 'No output path available for rendering.' });
-    }
+    const outputPath = path.join(
+      path.dirname(filePath),
+      `${path.basename(filePath, path.extname(filePath))}.render.png`
+    );
+    writeContextToFile(gl, width, height, 4, outputPath);
 
     return JSON.stringify({ ok: true, path: outputPath });
   } catch (error) {
@@ -90,35 +156,6 @@ export const jscadRender2dTool: ToolDefinition = {
   descriptor,
   run,
 };
-
-
-export const writeRenderOutput = (writeFile: (outputPath: string) => void, lastOutputPath: string) => {
-  if (!lastOutputPath) {
-    return;
-  }
-  const directory = path.dirname(lastOutputPath);
-  const baseName = path.basename(lastOutputPath, path.extname(lastOutputPath));
-  const nextPath = nextRenderPath(directory, baseName);
-  writeFile(nextPath);
-  return nextPath;
-}
-
-const nextRenderPath = (directory: string, baseName: string) => {
-  const prefix = `${baseName}.render.`;
-  const entries = fs.existsSync(directory) ? fs.readdirSync(directory) : [];
-  let maxIndex = 0;
-  for (const entry of entries) {
-    if (!entry.startsWith(prefix) || !entry.endsWith('.png')) {
-      continue;
-    }
-    const middle = entry.slice(prefix.length, -'.png'.length);
-    const parsed = Number(middle);
-    if (Number.isFinite(parsed) && parsed > maxIndex) {
-      maxIndex = parsed;
-    }
-  }
-  return path.join(directory, `${baseName}.render.${maxIndex + 1}.png`);
-}
 
 const loadRendererModules = (): {
   ok: true;

@@ -1,27 +1,21 @@
 import assert from 'assert/strict';
+import fs from 'fs';
+import path from 'path';
 import { jscadRender2dTool } from './jscad-render-2d';
 
-const validSource = `const jscad = require('@jscad/modeling')
-const { rectangle } = jscad.primitives
-
-const main = () => rectangle({ size: [10, 5] })
-
-module.exports = { main }
-`;
-
 async function run() {
-  const renderResult = await jscadRender2dTool.run({ source: validSource });
-  const okParsed = JSON.parse(renderResult);
-  if (okParsed.ok) {
-    assert.ok(typeof okParsed.path === 'string' && okParsed.path.length > 0, 'Expected render to return a path');
-  } else {
-    assert.ok(
-      typeof okParsed.error === 'string' && okParsed.error.length > 0,
-      'Expected a renderer error message when rendering fails'
-    );
+  const sourcePath = path.join(process.cwd(), 'jscad', 'hip-implant.jscad');
+  const outputPath = path.join(process.cwd(), 'jscad', 'hip-implant.render.png');
+  if (fs.existsSync(outputPath)) {
+    fs.unlinkSync(outputPath);
   }
+  const renderResult = await jscadRender2dTool.run({ file: sourcePath });
+  const okParsed = JSON.parse(renderResult);
+  assert.equal(okParsed.ok, true, `Expected render to succeed but got error: ${okParsed.error ?? 'unknown'}`);
+  assert.equal(okParsed.path, outputPath, 'Expected render to return the expected output path');
+  assert.ok(fs.existsSync(outputPath), 'Expected render output file to exist');
 
-  const badResult = await jscadRender2dTool.run({ source: '' });
+  const badResult = await jscadRender2dTool.run({ file: '' });
   const badParsed = JSON.parse(badResult);
   assert.equal(badParsed.ok, false, 'Expected empty source to fail rendering');
 }

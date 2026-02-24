@@ -1,4 +1,5 @@
 import { Agent, run, tool } from '@openai/agents';
+import { colors } from 'kiss-framework';
 import { z } from 'zod';
 
 import { executeAgentTool, getAgentToolSchemas } from '../tools';
@@ -15,7 +16,8 @@ export class OpenAiAgentService {
 
   async runAgent(input: SingleAgentStepOptions): Promise<SingleAgentStepResult> {
     let toolState: ToolState = {};
-    const tools = getAgentToolSchemas().map((descriptor) => {
+    const toolSchemas = getAgentToolSchemas();
+    const tools = toolSchemas.map((descriptor) => {
       const toolName = descriptor.function.name;
       const required = new Set(descriptor.function.parameters.required || []);
       const shape: Record<string, z.ZodTypeAny> = {};
@@ -54,17 +56,23 @@ export class OpenAiAgentService {
             const output = JSON.stringify({ ok: false, error: message });
             toolState.toolError = message;
             toolState.toolOutput = output;
+            console.debug('OpenAI tool call error:', colors.red(message));
             return output;
           }
           try {
+            console.debug(
+              `OpenAI tool call: ${colors.blue(toolName)} args: ${colors.yellow(JSON.stringify(toolInput, null, 2))}`
+            );
             const output = await executeAgentTool(toolName, toolInput as Record<string, unknown>);
             toolState.toolOutput = output;
+            console.debug(`OpenAI tool output: ${colors.cyan(output)}`);
             return output;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const output = JSON.stringify({ ok: false, error: message });
             toolState.toolError = message;
             toolState.toolOutput = output;
+            console.debug('OpenAI tool execution error:', colors.red(message));
             return output;
           }
         },
@@ -87,7 +95,21 @@ export class OpenAiAgentService {
       currentCode: input.currentCode,
     });
 
+    console.debug(`Sending to OpenAI Agents.
+      model: ${DEFAULT_MODEL},
+      message-goal: ${input.goal},
+      message-roles: ${colors.green('system, user')},
+      tool-names: ${colors.green(toolSchemas.map((t) => t.function.name).join(', '))},
+      `);
+
     const result = await run(agent, agentUser);
+
+    const finalOutput = result.finalOutput;
+    console.debug('OpenAI finalOutput:', colors.yellow(JSON.stringify(finalOutput, null, 2)));
+    if (typeof finalOutput === 'string') {
+      const prettyOutput = finalOutput.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      console.debug('OpenAI finalOutput (pretty):', colors.yellow(prettyOutput));
+    }
 
     const raw = (() => {
       if (typeof result.finalOutput === 'string') {

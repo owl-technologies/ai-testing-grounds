@@ -53,7 +53,35 @@ export const compileJscad = (source: string): Promise<unknown> => {
   sandbox._compile(source, sandbox.filename);
   const exported = sandbox.exports;
   const mainFn = resolveMainFunction(exported);
-  return Promise.resolve(mainFn({}));
+  let params: Record<string, unknown> = {};
+  if (exported && typeof exported === 'object') {
+    const exportsObj = exported as Record<string, unknown>;
+    const getParameterDefinitions = exportsObj.getParameterDefinitions;
+    if (typeof getParameterDefinitions === 'function') {
+      const definitions = getParameterDefinitions();
+      if (Array.isArray(definitions)) {
+        params = {};
+        for (const definition of definitions) {
+          if (!definition || typeof definition !== 'object') {
+            continue;
+          }
+          const defObj = definition as Record<string, unknown>;
+          const name = defObj.name;
+          if (typeof name !== 'string' || name.length === 0) {
+            continue;
+          }
+          if (defObj.initial !== undefined) {
+            params[name] = defObj.initial;
+          } else if (defObj.default !== undefined) {
+            params[name] = defObj.default;
+          } else if (defObj.value !== undefined) {
+            params[name] = defObj.value;
+          }
+        }
+      }
+    }
+  }
+  return Promise.resolve(mainFn(params));
 }
 
 export const resolveMainFunction = (moduleExports: unknown): (params: Record<string, unknown>) => unknown => {
