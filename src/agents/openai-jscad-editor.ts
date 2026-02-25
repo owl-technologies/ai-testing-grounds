@@ -88,7 +88,7 @@ export class OpenAiAgentService {
 
     const agentUser = formContent({
       goal: input.goal,
-      contextLine: input.context ? `Context: ${input.context}\n` : '',
+      contextLine: input.context ? input.context : '',
       outputPath: input.outputPath,
       iteration: input.iteration,
       maxIterations: input.maxIterations,

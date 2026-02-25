@@ -89,10 +89,28 @@ async function main() {
   console.log(colors.blue('Goal:'), goal);
   console.log(colors.blue('File:'), fileOverride);
   let currentCode = seedCode;
-  let toolFeedback = '';
+  let lastEvaluation = '';
+  let lastNotes = '';
+  let lastToolSummary = '';
+  let lastToolError = '';
 
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    const combinedContext = toolFeedback;
+  let iterationsUsed = 0;
+  while (iterationsUsed < maxIterations) {
+    const iteration = Math.min(iterationsUsed + 1, maxIterations);
+    let combinedContext = '';
+    if (lastEvaluation) {
+      combinedContext += `Last evaluation: ${lastEvaluation}\n`;
+    }
+    if (lastNotes) {
+      combinedContext += `Last notes: ${lastNotes}\n`;
+    }
+    if (lastToolSummary) {
+      combinedContext += `Last tool result: ${lastToolSummary}\n`;
+    }
+    if (lastToolError) {
+      combinedContext += `Last tool error: ${lastToolError}\n`;
+    }
+    combinedContext = combinedContext.trim();
     const step = await service.runAgent({
       goal,
       context: combinedContext || undefined,
@@ -103,23 +121,61 @@ async function main() {
     });
 
     currentCode = fs.readFileSync(fileOverride, 'utf-8');
+    iterationsUsed += 1;
+    if (step.toolOutput || step.toolError) {
+      iterationsUsed += 1;
+    }
 
     if (step.toolError) {
       console.log(colors.red('Tool schema error:'), step.toolError);
     }
+
+    const evaluationText = step.evaluation?.trim() || 'No evaluation returned.';
+    console.log(colors.cyan(`Evaluation: ${evaluationText}`));
 
     if (step.done) {
       console.log('Agent indicated completion.');
       break;
     }
 
-    if (step.toolOutput) {
-      toolFeedback = `Tool output:\n${step.toolOutput}`;
-    } else {
-      toolFeedback = '';
+    lastEvaluation = evaluationText;
+    lastNotes = step.notes?.trim() || '';
+    if (step.toolOutput || step.toolError) {
+      let toolSummary = '';
+      let toolError = step.toolError?.trim() || '';
+      if (step.toolOutput) {
+        try {
+          const parsed = JSON.parse(step.toolOutput);
+          if (parsed && typeof parsed === 'object') {
+            const parsedObj = parsed as Record<string, unknown>;
+            const ok = parsedObj.ok;
+            const error = parsedObj.error;
+            if (ok === false && typeof error === 'string') {
+              toolError = error;
+            } else if (ok === true) {
+              if (typeof parsedObj.path === 'string') {
+                toolSummary = `ok, path: ${parsedObj.path}`;
+              } else if (typeof parsedObj.file === 'string') {
+                toolSummary = `ok, updated file (${parsedObj.file.length} chars)`;
+              } else {
+                toolSummary = 'ok';
+              }
+            } else if (!toolError && typeof error === 'string') {
+              toolError = error;
+            }
+          } else {
+            toolSummary = step.toolOutput.slice(0, 200);
+          }
+        } catch {
+          toolSummary = step.toolOutput.slice(0, 200);
+        }
+      }
+      lastToolSummary = toolSummary;
+      lastToolError = toolError;
     }
-    if (iteration === maxIterations) {
+    if (iterationsUsed >= maxIterations) {
       console.log('Max iterations reached.');
+      break;
     }
   }
 

@@ -16,13 +16,17 @@ type OllamaChatMessage = {
   tool_calls?: ToolCall[];
 };
 
-const DEFAULT_MODEL = 'qwen3-vl:8b'// 'mistral:latest'; // 'qwen2.5-coder:latest';
+const DEFAULT_MODEL = 'adelnazmy2002/Qwen3-VL-4B-Instruct:Q4_K_M'
+// 'adelnazmy2002/Qwen3-VL-8B-Instruct'
+// 'qwen3-vl:8b'
+// 'mistral:latest'; 
+// 'qwen2.5-coder:latest';
 
 export class JscadEditorAgent {
 
   async runAgent(input: SingleAgentStepOptions): Promise<SingleAgentStepResult> {
     const model = DEFAULT_MODEL;
-    const contextLine = input.context ? `Context: ${input.context}\n` : '';
+    const contextLine = input.context ? input.context : '';
     const userContent = formContent({
       goal: input.goal,
       contextLine,

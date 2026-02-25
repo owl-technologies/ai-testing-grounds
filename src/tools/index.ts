@@ -1,11 +1,13 @@
 import { colors } from 'kiss-framework';
 import { ToolDefinition, ToolDescriptor } from '../config';
-import { diffWriteTool } from './diff-write';
+import { diffPatchTool } from './diff-patch';
+import { jscadRender2dTool } from './jscad-render-2d';
 import { jscadValidateTool } from './jscad-validate';
 
 const toolDefinitions: ToolDefinition[] = [
   jscadValidateTool,
-  diffWriteTool,
+  jscadRender2dTool,
+  diffPatchTool,
 ];
 
 const toolMap = new Map(toolDefinitions.map((tool) => [tool.descriptor.function.name, tool]));
