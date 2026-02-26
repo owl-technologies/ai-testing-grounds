@@ -1,8 +1,9 @@
 import { Module } from 'module';
 import path from 'path';
-import { ToolDefinition, ToolDescriptor } from '../config';
+import { ToolDefinition } from '../config';
+import { Tool } from 'ollama';
 
-const descriptor: ToolDescriptor = {
+const descriptor: Tool = {
   type: 'function',
   function: {
     name: 'jscad-validate',

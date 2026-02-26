@@ -1,28 +1,24 @@
 import { colors } from 'kiss-framework';
-import { Ollama } from 'ollama';
+import { ChatRequest, Message, Ollama, ToolCall } from 'ollama';
 import {
   formContent,
   OLLAMA_HOST,
   SingleAgentStepOptions,
   SingleAgentStepResult,
-  SYSTEM_PROMPT,
-  ToolCall,
+  SYSTEM_PROMPT
 } from '../config';
+import { log } from '../logger';
 import { executeAgentTool, getAgentToolSchemas, isAgentTool } from '../tools';
 
-type OllamaChatMessage = {
-  role?: string;
-  content?: string;
-  tool_calls?: ToolCall[];
-};
 
-const DEFAULT_MODEL = 'adelnazmy2002/Qwen3-VL-4B-Instruct:Q4_K_M'
-// 'adelnazmy2002/Qwen3-VL-8B-Instruct'
-// 'qwen3-vl:8b'
+const DEFAULT_MODEL =
+  // 'adelnazmy2002/Qwen3-VL-4B-Instruct:Q4_K_M';
+  // 'adelnazmy2002/Qwen3-VL-8B-Instruct';
+'qwen3-vl:8b';
 // 'mistral:latest'; 
 // 'qwen2.5-coder:latest';
 
-export class JscadEditorAgent {
+export class OllamaJSCADEditor {
 
   async runAgent(input: SingleAgentStepOptions): Promise<SingleAgentStepResult> {
     const model = DEFAULT_MODEL;
@@ -37,25 +33,39 @@ export class JscadEditorAgent {
     });
     const ollama = new Ollama({ host: OLLAMA_HOST });
     const tools = getAgentToolSchemas();
+    const userMessage: Message = { role: 'user', content: userContent };
+    // if (input.renderPngBase64 && input.renderPngBase64.trim()) {
+    //   let imageBase64 = input.renderPngBase64.trim();
+    //   const base64Marker = 'base64,';
+    //   if (imageBase64.startsWith('data:') && imageBase64.includes(base64Marker)) {
+    //     imageBase64 = imageBase64.slice(imageBase64.indexOf(base64Marker) + base64Marker.length);
+    //   }
+    //   userMessage.images = [imageBase64];
+    //   userMessage.content = `${userMessage.content}\n\nImage attached.`;
+    // }
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
+      userMessage,
     ];
-    console.debug(`Sending to ollama. 
-      model: ${model},
-      message-goal: ${input.goal},
-      message-roles: ${colors.green(messages.map((m) => m.role).join(', '))},
-      tool-names: ${colors.green(tools.map((t) => t.function.name).join(', '))},
-      `);
-    const response = await ollama.chat({
+    // console.debug(`Sending to ollama. 
+    //   model: ${model},
+    //   message-goal: ${input.goal},
+    //   message-roles: ${colors.green(messages.map((m) => m.role).join(', '))},
+    //   images-attached: ${userMessage.images ? colors.green(`Yes (${userMessage.images.length})`) : colors.red('No')},
+    //   tool-names: ${colors.green(tools.map((t) => t.function.name).join(', '))},
+    //   `);
+    const chatArgs = {
       model,
       messages,
       tools,
       stream: false,
       keep_alive: -1,
-    });
+    } as ChatRequest & { stream: false };
+    await log('ollama', 'ollama.chat request', chatArgs);
+    const response = await ollama.chat(chatArgs);
+    await log('ollama', 'ollama.chat response', response);
 
-    const firstMessage = response.message as OllamaChatMessage | undefined;
+    const firstMessage = response.message as Message | undefined;
     const { content, ...rest } = firstMessage || {};
     console.debug('response.message from Ollama:', colors.yellow(JSON.stringify(firstMessage, null, 2)));
     const prettyContent = firstMessage?.content
@@ -69,22 +79,39 @@ export class JscadEditorAgent {
 
     const toolCalls = this.extractToolCallsFromMessage(firstMessage);
 
-    console.debug('Extracted tool calls:', toolCalls?.length? colors.blue(JSON.stringify(toolCalls, null, 2)): colors.red('None'));
+    console.debug('Extracted tool calls:', toolCalls?.length ? colors.blue(JSON.stringify(toolCalls, null, 2)) : colors.red('None'));
     const toolCall = toolCalls?.[0];
     if (toolCall) {
       const normalized = this.normalizeToolCall(toolCall);
       if (normalized.toolError) {
         toolError = normalized.toolError;
+        await log('ollama', 'tool.error', toolError);
       } else if (normalized.toolName) {
+        let toolImages: string[] | undefined;
+        await log('ollama', 'tool.call', { name: normalized.toolName, args: normalized.args || {} });
         toolOutput = await executeAgentTool(
           normalized.toolName,
           normalized.args || {}
         );
+        await log('ollama', 'tool.response', toolOutput);
+        if (normalized.toolName === 'jscad-render-2d') {
+          try {
+            const parsedTool = JSON.parse(toolOutput) as { ok?: boolean; imageBase64?: string };
+            if (parsedTool?.ok === true && typeof parsedTool.imageBase64 === 'string') {
+              toolImages = [parsedTool.imageBase64];
+              console.debug(`Ollama tool output image attached (${Math.round(parsedTool.imageBase64.length / 1024)} KB).`);
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.debug('Failed to attach rendered image:', colors.red(message));
+          }
+        }
         messages.push(firstMessage as { role: string; content: string; tool_calls?: ToolCall[] });
         messages.push({
           role: 'tool',
           tool_name: normalized.toolName,
           content: toolOutput,
+          images: toolImages,
         } as { role: string; content: string; tool_name: string });
       }
     }
@@ -94,14 +121,17 @@ export class JscadEditorAgent {
 
     if (toolOutput) {
       console.debug(`Sending to ollama. Tool output: ${colors.cyan(toolOutput)}`);
-      const followUp = await ollama.chat({
+      const followUpArgs = {
         model,
         messages,
         tools,
         stream: false,
         keep_alive: -1,
-      });
-      const followUpMessage = followUp.message as OllamaChatMessage | undefined;
+      } as ChatRequest & { stream: false };
+      await log('ollama', 'ollama.chat request', followUpArgs);
+      const followUp = await ollama.chat(followUpArgs);
+      await log('ollama', 'ollama.chat response', followUp);
+      const followUpMessage = followUp.message as Message | undefined;
       const { content: followUpContent } = followUpMessage || {};
       console.debug('followUp.message from Ollama:', colors.yellow(JSON.stringify(followUpMessage, null, 2)));
       const prettyFollowUp = followUpContent
@@ -113,12 +143,9 @@ export class JscadEditorAgent {
       raw = followUp.message?.content?.trim() || '';
       parsed = this.extractAgentJson(raw);
     }
-
-    const jscad = parsed?.jscad?.trim() || '';
     const baseNotes = parsed?.notes?.trim() || '';
     const notes = baseNotes;
     return {
-      jscad,
       done: parsed?.done ?? false,
       evaluation: parsed?.evaluation?.trim() || '',
       notes,
@@ -142,7 +169,7 @@ export class JscadEditorAgent {
     }
   }
 
-  private extractToolCallsFromMessage(message: OllamaChatMessage | undefined): ToolCall[] | undefined {
+  private extractToolCallsFromMessage(message: Message | undefined): ToolCall[] | undefined {
     if (message?.tool_calls && message.tool_calls.length) {
       return message.tool_calls;
     }

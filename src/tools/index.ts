@@ -1,18 +1,19 @@
 import { colors } from 'kiss-framework';
-import { ToolDefinition, ToolDescriptor } from '../config';
-import { diffPatchTool } from './diff-patch';
+import { ToolDefinition } from '../config';
+import { applyPatchTool } from './apply-patch';
 import { jscadRender2dTool } from './jscad-render-2d';
 import { jscadValidateTool } from './jscad-validate';
+import { Tool } from 'ollama';
 
 const toolDefinitions: ToolDefinition[] = [
   jscadValidateTool,
   jscadRender2dTool,
-  diffPatchTool,
+  applyPatchTool,
 ];
 
 const toolMap = new Map(toolDefinitions.map((tool) => [tool.descriptor.function.name, tool]));
 
-export const getAgentToolSchemas = (): ToolDescriptor[] => toolDefinitions.map((tool) => tool.descriptor);
+export const getAgentToolSchemas = (): Tool[] => toolDefinitions.map((tool) => tool.descriptor);
 
 export const executeAgentTool = async (
   name: string,

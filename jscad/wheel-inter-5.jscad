@@ -23,7 +23,7 @@ function makeHub(hubRadius, hubLength) {
 function makeSpokes(count, spokeRadius, spokeLength, hubRadius, hubLength) {
   // create two spoke flanges (left/right) offset along the hub axis (Z)
   const spokes = []
-  const flangeOffset = Math.max(2, hubLength / 2 - 4) + 3 // distance from center to flange face (increased by 3 mm)
+  const flangeOffset = Math.max(2, hubLength / 2 - 4) // distance from center to flange face
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2
     // create a thin cylinder along X, so rotateY to align its axis
@@ -55,8 +55,7 @@ const main = () => {
   const spokeCount = 32
   const spokeRadius = 1.2
   const rimDrillRadius = (rimInner + rimOuter) / 2
-  // shorten spokes slightly (reduce by additional 3mm) to avoid overreach into rim
-  const spokeLength = rimDrillRadius - hubRadius - 9
+  const spokeLength = rimDrillRadius - hubRadius - 6
 
   const rim = makeRim(rimOuter, rimInner, rimWidth)
   const tire = translate([0, 0, 0], makeTire(rimOuter, tireThickness, tireWidth))

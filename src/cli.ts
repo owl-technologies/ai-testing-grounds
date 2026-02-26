@@ -1,8 +1,8 @@
 import fs from 'fs';
 import { colors } from 'kiss-framework';
 import path from 'path';
-import { JscadEditorAgent } from './agents/ollama-jscad-editor';
-import { OpenAiAgentService } from './agents/openai-jscad-editor';
+import { OllamaJSCADEditor } from './agents/ollama-jscad-editor';
+import { OpenAiJSCADEditor } from './agents/openai-jscad-editor';
 
 const usageText = `Usage: npm run cli -- [options]
 
@@ -83,7 +83,7 @@ async function main() {
   const seedCode = fs.readFileSync(fileOverride, 'utf-8');
 
   const useOpenAi = args.openai === 'true';
-  const service = useOpenAi ? new OpenAiAgentService() : new JscadEditorAgent();
+  const service = useOpenAi ? new OpenAiJSCADEditor() : new OllamaJSCADEditor();
   const parsedMax = Number(args['max-iterations'] ?? '');
   const maxIterations = Number.isFinite(parsedMax) && parsedMax > 0 ? Math.floor(parsedMax) : 3;
   console.log(colors.blue('Goal:'), goal);

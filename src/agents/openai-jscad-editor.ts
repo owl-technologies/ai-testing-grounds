@@ -1,9 +1,10 @@
-import { Agent, run, tool } from '@openai/agents';
-import { colors } from 'kiss-framework';
+import { Agent, run, tool, type AgentInputItem } from '@openai/agents';
+import { assert, colors } from 'kiss-framework';
 import { z } from 'zod';
 
 import { executeAgentTool, getAgentToolSchemas } from '../tools';
 import { formContent, SingleAgentStepOptions, SingleAgentStepResult, SYSTEM_PROMPT } from '../config';
+import { log } from '../logger';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
 
@@ -12,16 +13,16 @@ type ToolState = {
   toolError?: string;
 };
 
-export class OpenAiAgentService {
-
+export class OpenAiJSCADEditor {
   async runAgent(input: SingleAgentStepOptions): Promise<SingleAgentStepResult> {
     let toolState: ToolState = {};
     const toolSchemas = getAgentToolSchemas();
     const tools = toolSchemas.map((descriptor) => {
-      const toolName = descriptor.function.name;
-      const required = new Set(descriptor.function.parameters.required || []);
+      const toolName = descriptor.function.name!;
+      const parametersDef = descriptor.function.parameters;
+      const required = new Set(parametersDef?.required || []);
       const shape: Record<string, z.ZodTypeAny> = {};
-      for (const [name, definition] of Object.entries(descriptor.function.parameters.properties)) {
+      for (const [name, definition] of Object.entries(parametersDef?.properties || {})) {
         let schema: z.ZodTypeAny;
         switch (definition.type) {
           case 'string':
@@ -42,13 +43,12 @@ export class OpenAiAgentService {
         }
         shape[name] = required.has(name) ? schema : schema.optional();
       }
-
-
+      const parametersSchema = z.object(shape);
 
       return tool({
         name: toolName,
-        description: descriptor.function.description,
-        parameters: z.object(shape),
+        description: descriptor.function.description!,
+        parameters: parametersSchema,
         strict: true,
         execute: async (toolInput) => {
           if (!toolInput || typeof toolInput !== 'object') {
@@ -57,6 +57,7 @@ export class OpenAiAgentService {
             toolState.toolError = message;
             toolState.toolOutput = output;
             console.debug('OpenAI tool call error:', colors.red(message));
+            await log('openai', 'tool.error', message);
             return output;
           }
           try {
@@ -65,7 +66,7 @@ export class OpenAiAgentService {
             );
             const output = await executeAgentTool(toolName, toolInput as Record<string, unknown>);
             toolState.toolOutput = output;
-            console.debug(`OpenAI tool output: ${colors.cyan(output)}`);
+            // console.debug(`OpenAI tool output: ${colors.cyan(output)}`);
             return output;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -73,6 +74,7 @@ export class OpenAiAgentService {
             toolState.toolError = message;
             toolState.toolOutput = output;
             console.debug('OpenAI tool execution error:', colors.red(message));
+            await log('openai', 'tool.error', message);
             return output;
           }
         },
@@ -99,17 +101,43 @@ export class OpenAiAgentService {
       model: ${DEFAULT_MODEL},
       message-goal: ${input.goal},
       message-roles: ${colors.green('system, user')},
+      
       tool-names: ${colors.green(toolSchemas.map((t) => t.function.name).join(', '))},
       `);
 
-    const result = await run(agent, agentUser);
+    let runInput: string | AgentInputItem[] = agentUser;
+    // const inlineImageBase64 = input.renderPngBase64;
+    // if (inlineImageBase64 && inlineImageBase64.trim()) {
+    //   let imageData = inlineImageBase64.trim();
+    //   const base64Marker = 'base64,';
+    //   if (imageData.startsWith('data:') && imageData.includes(base64Marker)) {
+    //     imageData = imageData.slice(imageData.indexOf(base64Marker) + base64Marker.length);
+    //   }
+    //   if (!imageData.startsWith('data:')) {
+    //     imageData = `data:image/png;base64,${imageData}`;
+    //   }
+    //   console.debug(`OpenAI input image attached (${Math.round(imageData.length / 1024)} KB).`);
+    //   runInput = [
+    //     {
+    //       role: 'user',
+    //       content: [
+    //         { type: 'input_text', text: agentUser },
+    //         { type: 'input_image', image: imageData },
+    //       ],
+    //     },
+    //   ];
+    // }
+
+    await log('openai', 'openai.run request', { model: DEFAULT_MODEL, input: runInput, tools: toolSchemas });
+    const result = await run(agent, runInput);
+    await log('openai', 'openai.run response', result);
 
     const finalOutput = result.finalOutput;
     console.debug('OpenAI finalOutput:', colors.yellow(JSON.stringify(finalOutput, null, 2)));
-    if (typeof finalOutput === 'string') {
-      const prettyOutput = finalOutput.replace(/\\n/g, '\n').replace(/\\"/g, '"');
-      console.debug('OpenAI finalOutput (pretty):', colors.yellow(prettyOutput));
-    }
+    // if (typeof finalOutput === 'string') {
+    //   const prettyOutput = finalOutput.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    //   console.debug('OpenAI finalOutput (pretty):', colors.yellow(prettyOutput));
+    // }
 
     const raw = (() => {
       if (typeof result.finalOutput === 'string') {
@@ -138,13 +166,10 @@ export class OpenAiAgentService {
         // intentionally ignore malformed JSON
       }
     }
-
-    const parsedJscad = parsed?.jscad?.trim() || '';
-    const jscad = parsedJscad || input.currentCode;
+    
     const notes = parsed?.notes?.trim() || '';
 
     return {
-      jscad,
       done: parsed?.done ?? false,
       evaluation: parsed?.evaluation?.trim() || '',
       notes,

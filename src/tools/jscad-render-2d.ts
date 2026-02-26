@@ -1,12 +1,13 @@
 import path from 'path';
-import { ToolDefinition, ToolDescriptor } from '../config';
+import { ToolDefinition } from '../config';
 import { compileJscad } from './jscad-validate';
+import { Tool } from 'ollama';
 
-const descriptor: ToolDescriptor = {
+const descriptor: Tool = {
   type: 'function',
   function: {
     name: 'jscad-render-2d',
-    description: 'Render JSCAD to a PNG 2D snapshot when possible.',
+    description: 'Render JSCAD to a PNG 2D snapshot and return base64 image data when possible.',
     parameters: {
       type: 'object',
       required: ['file'],
@@ -146,7 +147,9 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     );
     writeContextToFile(gl, width, height, 4, outputPath);
 
-    return JSON.stringify({ ok: true, path: outputPath });
+    const pngBuffer = await fs.readFile(outputPath);
+    const imageBase64 = pngBuffer.toString('base64');
+    return JSON.stringify({ ok: true, imageBase64, path: outputPath });
   } catch (error) {
     return JSON.stringify({ ok: false, error: formatError(error) });
   }

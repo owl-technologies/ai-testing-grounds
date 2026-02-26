@@ -1,129 +1,147 @@
 const jscad = require('@jscad/modeling')
-const { colorize, hslToRgb } = jscad.colors
-const { translate, translateX, translateY, translateZ, rotateX, rotateY } = jscad.transforms
-const { union, subtract } = jscad.booleans
-const { roundedRectangle, cuboid, roundedCuboid } = jscad.primitives
-const { extrudeLinear } = jscad.extrusions
-const { degToRad } = jscad.utils
+const { colorize, hslToRgb, colorNameToRgb } = jscad.colors
+const { translate, rotateY, rotateX, rotateZ, translateX, translateZ} = jscad.transforms
+const { union, intersect, difference, subtract } = jscad.booleans
+const { hull, hullChain } = jscad.hulls
+const { cylinder, cylinderElliptic, roundedCylinder, sphere, arc, polygon, line, cube, cuboid, torus, roundedCuboid } = jscad.primitives
+const { degToRad, radToDeg } = jscad.utils
 
-// Parametric everyday glasses with configurable fit (lens separation and temple reach to ears).
-const getParameterDefinitions = () => [
-  { name: 'frameWidth', type: 'number', initial: 140, min: 120, max: 170, step: 1, caption: 'Frame width (hinge to hinge, mm)' },
-  { name: 'lensWidth', type: 'number', initial: 52, min: 40, max: 65, step: 1, caption: 'Lens width (mm)' },
-  { name: 'lensHeight', type: 'number', initial: 42, min: 30, max: 60, step: 1, caption: 'Lens height (mm)' },
-  { name: 'pupilDistance', type: 'number', initial: 62, min: 55, max: 75, step: 0.5, caption: 'Lens center distance (interpupillary, mm)' },
-  { name: 'bridgeWidth', type: 'number', initial: 18, min: 12, max: 26, step: 0.5, caption: 'Bridge width (mm)' },
-  { name: 'rimWidth', type: 'number', initial: 5, min: 2, max: 10, step: 0.5, caption: 'Rim width (mm)' },
-  { name: 'frameThickness', type: 'number', initial: 4, min: 2, max: 8, step: 0.5, caption: 'Front thickness (mm)' },
-  { name: 'lensRadius', type: 'number', initial: 6, min: 2, max: 12, step: 0.5, caption: 'Lens corner radius (mm)' },
+// Declare a function named "getParameterDefinitions". It will return an array of parameter definitions.
+// The parameter values are passed into the main method as an object.
+const getParameterDefinitions = () => {
+  return [
 
-  { name: 'templeLength', type: 'number', initial: 145, min: 120, max: 170, step: 1, caption: 'Temple length to ear (mm)' },
-  { name: 'templeThickness', type: 'number', initial: 4, min: 3, max: 8, step: 0.5, caption: 'Temple thickness (mm)' },
-  { name: 'templeHeight', type: 'number', initial: 10, min: 6, max: 14, step: 0.5, caption: 'Temple height (mm)' },
-  { name: 'templeTilt', type: 'number', initial: 8, min: 0, max: 15, step: 0.5, caption: 'Outward tilt (deg) toward ears' },
-  { name: 'templeDrop', type: 'number', initial: 25, min: 10, max: 40, step: 1, caption: 'Ear hook drop length (mm)' },
-  { name: 'templeBendAngle', type: 'number', initial: 40, min: 10, max: 70, step: 1, caption: 'Ear hook bend (deg)' },
+    { name: 'group3', type: 'group', caption: 'Group 1: Top' },
+    { name: 's3l4', type: 'number', initial: 70.0, min: 1.0, max: 199.0, step: 1, caption: 'Head horizontal distance from femur:' },
+    { name: 's3angle', type: 'number', initial: 55.0, min: 0, max: 90.0, step: 1, caption: 'Neck shaft angle in degrees:' },
+    { name: 's3rh', type: 'number', initial: 20.0, min: 1.0, max: 70.0, step: 1, caption: 'Head Radius:' },
+    { name: 's3rn', type: 'number', initial: 8.0, min: 1.0, max: 60.0, step: 1, caption: 'Neck Radius:' },
+    
+    { name: 'group2', type: 'group', caption: 'Group 2: Middle' },
+    { name: 's2l2', type: 'number', initial: 50.0, min: 0, max: 200.0, step: 1, caption: 'L2 - mid segment lower part:' },
+    { name: 's2l3', type: 'number', initial: 50.0, min: 0, max: 200.0, step: 1, caption: 'L3 - mid segment top part:' },
+    { name: 'R', type: 'number', initial: 80.0, min: 20, max: 200.0, step: 1, caption: 'R - Radius of medial curvature:' },
 
-  { name: 'nosePadDepth', type: 'number', initial: 2.5, min: 0, max: 6, step: 0.5, caption: 'Nose pad stand-off (mm)' },
-  { name: 'nosePadWidth', type: 'number', initial: 8, min: 4, max: 14, step: 0.5, caption: 'Nose pad width (mm)' },
-  { name: 'nosePadHeight', type: 'number', initial: 14, min: 8, max: 20, step: 0.5, caption: 'Nose pad height (mm)' },
-]
-
-const main = (p) => {
-  // Basic sanity to avoid overlaps
-  const minFrame = p.lensWidth * 2 + p.bridgeWidth + p.rimWidth * 2
-  const frameWidth = Math.max(p.frameWidth, minFrame)
-
-  const front = buildFront(p, frameWidth)
-  const temples = buildTemples(p, frameWidth)
-  const pads = buildNosePads(p)
-
-  return union(front, pads, temples)
+    { name: 'group1', type: 'group', caption: 'Group 3: Bottom' },
+    { name: 's1r1', type: 'number', initial: 10, min: 0, max: 200.0, step: 1, caption: 'R1 - bottom radius in trabaculae:' },
+    { name: 's1r2', type: 'number', initial: 15, min: 0, max: 200.0, step: 1, caption: 'R2 lower segment radius in femur:' },
+    { name: 's1l1', type: 'number', initial: 70.0, min: 0, max: 200.0, step: 1, caption: 'L1 - lower segment length :' },
+  ]
 }
 
-const buildFront = (p, frameWidth) => {
-  const totalHeight = p.lensHeight + p.rimWidth * 2
+// G. Saravana-Kumar et all, "Patient specific parametric geo- metric modelling of cementless hip prosthesis"
+const main = (params) => {
+  
+  // Create color using: hue, saturation, lightness, transparency.
+  let transpBlue  =  hslToRgb(240/360, 1, 0.5, 0.7) // To go from RGB use https://www.rapidtables.com/convert/color/rgb-to-hsl.html
+  let transpRed  =  hslToRgb(0, 1, 0.5, 0.5) // To go from RGB use https://www.rapidtables.com/convert/color/rgb-to-hsl.html
+  // ------------------------ Segment 1 (see Figure 4) Between section 1 and 2
+  let segment1  = cylinderElliptic({
+    center: [0,0,-params.s1l1+(params.s1l1/2)-params.s2l2],
+    height: params.s1l1, 
+    startRadius: [params.s1r1, params.s1r1], 
+    endRadius: [params.s1r2, params.s1r2],
+    segments: 60
+  }) 
 
-  // Base plate
-  const plate2d = roundedRectangle({
-    size: [frameWidth, totalHeight],
-    roundRadius: Math.min(p.rimWidth * 0.8, totalHeight / 4)
+  // ------------------------ Segment 2 (see Figure 4) Between section 2 and 3
+  let s2height = params.s2l2+params.s2l3
+  let s2depth = params.s1r2*2
+  let s2width = 100
+  let segment2 = cuboid({
+    size: [s2width, s2depth, s2height], 
+    center:[s2width/2-params.s1r2,0,-s2height/2+params.s2l3]
   })
-  let front = extrudeLinear({ height: p.frameThickness }, plate2d)
 
-  // Lens cutouts
-  const lensShape = roundedRectangle({
-    size: [p.lensWidth, p.lensHeight],
-    roundRadius: Math.min(p.lensRadius, Math.min(p.lensWidth, p.lensHeight) / 2 - 1)
+  // ------------------------ Segment 3 (see Figure 4) Above section 3
+  let neckLength = params.s3l4/Math.sin(degToRad(params.s3angle)) //distance from point O to point C, see figure 4
+  let headHeight = Math.sqrt(neckLength**2-params.s3l4**2) // y-axis height over point O, see figure 4
+  let head = colorize(transpBlue,sphere({radius: params.s3rh, center: [params.s3l4,0,headHeight],segments: 40}))
+  let neck = roundedCylinder({
+    radius: params.s3rn, 
+    height: neckLength, 
+    roundRadius:params.s3rn -0.1 
   })
-  const eyeHalfGap = p.pupilDistance / 2
-  const leftLens = translateX(-eyeHalfGap, lensShape)
-  const rightLens = translateX(eyeHalfGap, lensShape)
-  const lensCuts = extrudeLinear({ height: p.frameThickness + 0.1 }, [leftLens, rightLens]) // small extra to ensure clean boolean
-  front = subtract(front, lensCuts)
+  neck = rotateY(degToRad(params.s3angle), neck)
+  neck = translate([params.s3l4/2, 0, headHeight/2], neck)
+  let segment3 = [neck, head]
 
-  // Bridge relief (gentle inward curve)
-  const bridgeRelief = roundedRectangle({
-    size: [p.bridgeWidth, p.lensHeight],
-    roundRadius: p.lensRadius * 0.6
+  // ------------------------ Bevel with radius
+  let cut1 = cylinder({radius: params.R+params.s1r2, height:params.s1r2*2})
+  let tor = torus({ innerRadius: params.s1r2, outerRadius: params.R+params.s1r2, innerSegments: 40, outerSegments: 60 })
+  cut1 = subtract(cut1, tor)
+  cut1 = rotateX(degToRad(90),cut1)
+  cut1 = colorize(transpRed,cut1)
+  let beta = degToRad(180-90-params.s3angle)// top bevel intersection point, is neck mid offset by section 2 radius in the direction perpendicular to the neck
+  let p1off = [params.s1r2*Math.cos(beta), params.s1r2*Math.sin(beta) ]
+  let p1 = [params.s3l4/2+p1off[0], headHeight/2-p1off[1]] // medial curvature by fitting the torus edge through points p1 and p2
+  let pointP1 = cuboid({ size: [1, 100, 1], center:[p1[0], 0,p1[1]]})
+  let p2 = [params.s1r2, -params.s2l2]
+  let pointP2 = cuboid({ size: [1, 100, 1], center:[p2[0], 0, p2[1]]})
+  let [cx, cy] = medialCurvCenter(p1,p2,params.R)
+  cut1 = translate([cx,0,cy],cut1)
+  segment2 = subtract(segment2, cut1)
+
+  // ------------------------ Straight bevel
+  let offset = 40
+  let sBevel = cuboid({
+    size: [params.s1r2+offset, s2depth, s2height*3], 
+    center:[-params.s1r2/2-(offset/2),0,0]
   })
-  const bridgeCut = translateZ(p.frameThickness * 0.25,
-    extrudeLinear({ height: p.frameThickness * 0.9 }, bridgeRelief)
-  )
-  front = subtract(front, bridgeCut)
+  let cyl = cylinder({
+    radius: params.s1r2, 
+    height: s2height*3, 
+    center: [0,0,0],
+    segments: 60
+  })
+  sBevel = subtract(sBevel, cyl)
 
-  // Color for quick visual separation
-  const frameColor = hslToRgb(30 / 360, 0.45, 0.35) // warm matte brown
-  return colorize(frameColor, front)
+  // ------------------------ Bevel left side of segment2. Top must intersect femoral axis
+  let alpha = Math.atan((params.s2l2+params.s2l3)/params.s1r2)
+  //console.log('alpha:' + radToDeg(alpha));
+  let cut2 = rotateY(degToRad(90)-alpha,sBevel)
+  cut2 = translate([0,0,-params.s2l2], cut2)
+  segment2 = subtract(segment2,cut2)
+
+  // ------------------------ Bevel top side of segment2
+  let cut3 = rotateY(degToRad(90),sBevel)
+  cut3 = translate([0,0,params.s2l3-params.s1r2], cut3)
+  segment2 = subtract(segment2,cut3)
+
+  // ------------------------ Bevel right side of segment2
+  let cut4 = rotateY(degToRad(90+params.s3angle),sBevel)
+  cut4 = translate([params.s3l4/2+offset-params.s1r2,0,0], cut4)
+  segment2 = subtract(segment2,cut4)
+
+  // ------------------------ Build implant
+  let implant = union(segment1, segment2, segment3) // the end assembly 
+  let cuts = colorize(transpRed,[pointP1, pointP2, cut1])
+
+  // ------------------------ Move and position
+  implant =rotateZ(degToRad(90),rotateX(degToRad(90),implant))
+  return [implant]
 }
 
-const buildTemples = (p, frameWidth) => {
-  const hingeZ = p.frameThickness / 2
-  const hingeY = 0
-  const halfWidth = frameWidth / 2 - p.rimWidth / 2
-
-  const makeSide = (side) => {
-    const barLength = p.templeLength - p.templeDrop
-    const bar = cuboid({
-      size: [p.templeThickness, p.templeHeight, barLength],
-      center: [0, 0, -barLength / 2]
-    })
-
-    const hook = rotateX(degToRad(-p.templeBendAngle),
-      cuboid({
-        size: [p.templeThickness, p.templeHeight, p.templeDrop],
-        center: [0, 0, -p.templeDrop / 2]
-      })
-    )
-    let temple = union(
-      bar,
-      translate([0, 0, -barLength], hook)
-    )
-
-    temple = rotateY(degToRad(side * p.templeTilt), temple)
-    temple = translate([side * halfWidth, hingeY, hingeZ], temple)
-
-    const templeColor = hslToRgb(205 / 360, 0.35, 0.35) // slate blue
-    return colorize(templeColor, temple)
-  }
-
-  return union(makeSide(1), makeSide(-1))
+/**
+ * Calculates the center for medial curvature, see section 3.2, Femoral feature extraction
+ * G. Saravana-Kumar et all, "Patient specific parametric geo- metric modelling of cementless hip prosthesis"
+ * 
+ * @param a - section 3 lowest point as xy vector (see figure 4)
+ * @param b - section 2 right end as xy vector (see figure 4)
+ * @param r - desired medial curve radius, must be big enough to reach a and b (see figure 3)
+ * 
+ * @returns [cx, cy] - center of medial curvature
+ */
+const medialCurvCenter = (a,b,r) => {
+  let mV = a.map((e,i)=>(e-b[i])/2+b[i])
+  let dV = a.map((e,i)=>e-mV[i])
+  let d = Math.sqrt(dV[0]**2+dV[1]**2)
+  let h = Math.sqrt((r**2 - d**2))
+  let alpha = -Math.atan( (a[0]-b[0]) / (a[1]-b[1]) )
+  let cx = h*Math.cos(alpha)+mV[0]
+  let cy = h*Math.sin(alpha)+mV[1]
+  return [cx, cy]
 }
 
-const buildNosePads = (p) => {
-  const pad = roundedCuboid({
-    size: [p.nosePadWidth, p.nosePadHeight, p.nosePadDepth],
-    roundRadius: Math.min(p.nosePadWidth, p.nosePadHeight) * 0.15,
-    center: [0, 0, -p.nosePadDepth / 2]
-  })
-
-  const verticalOffset = 0 // center aligned with lens mid-height
-  const horizontalOffset = p.bridgeWidth / 2
-  const padLeft = translate([-horizontalOffset, verticalOffset, 0], pad)
-  const padRight = translate([horizontalOffset, verticalOffset, 0], pad)
-
-  const padColor = hslToRgb(0, 0, 0.8) // light translucent
-  return colorize(padColor, union(padLeft, padRight))
-}
-
+// You must also export the getParameterDefinitions method.
 module.exports = { main, getParameterDefinitions }

@@ -1,13 +1,16 @@
 import fs from 'fs/promises';
-import { ToolDefinition, ToolDescriptor } from "../config";
+import { ToolDefinition } from "../config";
+import { Tool } from 'ollama';
 
 
-const descriptor: ToolDescriptor = {
+const descriptor: Tool = {
   type: 'function',
   function: {
     name: 'diff-patch',
     description: `Apply a unified diff patch to the target file. The patch must include at least one hunk header in the form:
 @@ -oldStart,oldCount +newStart,newCount @@
+Inside hunks, every line must start with "+", "-", or a single leading space.
+Do not include "diff -u", "---", or "+++" header lines.
 Example input:
 {
   "file": "/path/to/file.jscad",
@@ -23,7 +26,7 @@ Example input:
         },
         patch: {
           type: 'string',
-          description: 'Unified diff patch to apply to the file. Hunk header start with @@ -oldStart,oldCount +newStart,newCount @@. Lines starting with "-" indicate removals, lines starting with "+" indicate additions, and lines starting with " " are unchanged context.',
+          description: 'Unified diff patch to apply to the file. Inside hunks, every line must start with "+", "-", or a single leading space.',
         }
       },
     },
@@ -92,7 +95,11 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
       continue;
     }
     if (!currentHunk) {
-      return JSON.stringify({ ok: false, error: 'Invalid patch: missing hunk header.' });
+      return JSON.stringify({
+        ok: false,
+        error:
+          'Invalid patch: missing hunk header. Example:\n@@ -0,0 +1,1 @@\n+// line 1',
+      });
     }
     const prefix = line[0];
     if (prefix !== ' ' && prefix !== '+' && prefix !== '-') {
