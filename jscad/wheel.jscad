@@ -1,70 +1,62 @@
-// simple bicycle wheel model for JSCAD
-const { cylinder, cuboid } = require('@jscad/modeling').primitives
-const { subtract, union } = require('@jscad/modeling').booleans
-const { translate, rotateY, rotateZ } = require('@jscad/modeling').transforms
+const { primitives, booleans, transforms } = require('@jscad/modeling')
+const { cylinder } = primitives
+const { subtract, union } = booleans
+const { rotateX, rotateY, rotateZ, translate } = transforms
 
-function makeRim(rOuter, rInner, width) {
-  const outer = cylinder({ height: width, radius: rOuter, segments: 128 })
-  const inner = cylinder({ height: width + 2, radius: rInner, segments: 128 })
-  // align centers on Z (default)
-  return subtract(outer, inner)
-}
-
-function makeTire(rimOuter, tireThickness, tireWidth) {
-  const outer = cylinder({ height: tireWidth, radius: rimOuter + tireThickness, segments: 128 })
-  const inner = cylinder({ height: tireWidth + 2, radius: rimOuter - 2, segments: 128 })
-  return subtract(outer, inner)
-}
-
-function makeHub(hubRadius, hubLength) {
-  return cylinder({ height: hubLength, radius: hubRadius, segments: 64 })
-}
-
-function makeSpokes(count, spokeRadius, spokeLength, hubRadius, hubLength) {
-  // create two spoke flanges (left/right) offset along the hub axis (Z)
-  const spokes = []
-  const flangeOffset = Math.max(2, hubLength / 2 - 4) + 3 // distance from center to flange face (increased by 3 mm)
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2
-    // create a thin cylinder along X, so rotateY to align its axis
-    const spoke = cylinder({ height: spokeLength, radius: spokeRadius, segments: 24 })
-    const offset = hubRadius + spokeLength / 2 + 2
-
-    // right flange spoke
-    const placedR = rotateZ(angle, translate([offset, 0, flangeOffset], rotateY(Math.PI / 2, spoke)))
-    spokes.push(placedR)
-
-    // left flange spoke (staggered a bit in angle to emulate lacing)
-    const placedL = rotateZ(angle + (Math.PI / count), translate([offset, 0, -flangeOffset], rotateY(Math.PI / 2, spoke)))
-    spokes.push(placedL)
-  }
-  return union(...spokes)
-}
-
+// Simple realistic bicycle wheel approximation: rim, hub, and radial spokes
 const main = () => {
-  const rimOuter = 200
-  const rimInner = 188
-  const rimWidth = 18
-
-  const tireThickness = 16
-  const tireWidth = 26
+  // parameters (mm)
+  const rimOuterRadius = 340 / 2 // ~700c wheel outer diameter ~ 700mm
+  const rimInnerRadius = rimOuterRadius - 20
+  const rimWidth = 20
+  const rimWallThickness = 4
 
   const hubRadius = 18
-  const hubLength = 36
+  const hubWidth = 40
 
+  const spokeRadius = 0.9
   const spokeCount = 32
-  const spokeRadius = 1.2
-  const rimDrillRadius = (rimInner + rimOuter) / 2
-  // shorten spokes slightly (reduce by additional 3mm) to avoid overreach into rim
-  const spokeLength = rimDrillRadius - hubRadius - 9
 
-  const rim = makeRim(rimOuter, rimInner, rimWidth)
-  const tire = translate([0, 0, 0], makeTire(rimOuter, tireThickness, tireWidth))
-  const hub = translate([0, 0, 0], makeHub(hubRadius, hubLength))
-  const spokes = makeSpokes(spokeCount, spokeRadius, spokeLength, hubRadius, hubLength)
+  // Rim: a thin cylindrical ring (approximated by subtracting inner cylinder)
+  const outerCyl = cylinder({ height: rimWidth, radius: rimOuterRadius, segments: 128 })
+  const innerCyl = translate([0, 0, -1], cylinder({ height: rimWidth + 2, radius: rimInnerRadius, segments: 128 }))
+  const rim = subtract(outerCyl, innerCyl)
 
-  // assemble: hub centered, rim and tire centered
-  return union(rim, tire, hub, spokes)
+  // Hub body
+  const hub = cylinder({ height: hubWidth, radius: hubRadius, segments: 64 })
+
+  // Hub flanges (slightly larger discs where spokes attach)
+  const flangeThickness = 4
+  const flangeRadius = hubRadius + 12
+  const leftFlange = translate([0, 0, -hubWidth / 2 - flangeThickness / 2], cylinder({ height: flangeThickness, radius: flangeRadius, segments: 64 }))
+  const rightFlange = translate([0, 0, hubWidth / 2 + flangeThickness / 2], cylinder({ height: flangeThickness, radius: flangeRadius, segments: 64 }))
+
+  // Spokes: create two radial spoke sets (left and right) translated to flange planes
+  const spokeLength = rimInnerRadius - flangeRadius + 0.5
+  const leftSpokes = []
+  const rightSpokes = []
+  for (let i = 0; i < spokeCount; i++) {
+    const angle = (2 * Math.PI * i) / spokeCount
+    // create a spoke oriented along X, then rotate around Z
+    let sL = cylinder({ height: spokeLength, radius: spokeRadius, segments: 24 })
+    let sR = cylinder({ height: spokeLength, radius: spokeRadius, segments: 24 })
+    sL = rotateY(Math.PI / 2, sL) // align along X axis
+    sR = rotateY(Math.PI / 2, sR)
+    // move so one end is near flangeRadius and the other near rim inner radius
+    // keep same X translation but place each set at the flange midplanes
+    sL = translate([flangeRadius + spokeLength / 2, 0, -hubWidth / 2 - flangeThickness / 2], sL)
+    sR = translate([flangeRadius + spokeLength / 2, 0, hubWidth / 2 + flangeThickness / 2], sR)
+    sL = rotateZ(angle, sL)
+    sR = rotateZ(angle, sR)
+    leftSpokes.push(sL)
+    rightSpokes.push(sR)
+  }
+
+  const wheel = union(rim, hub, leftFlange, rightFlange, ...leftSpokes, ...rightSpokes)
+
+  // center the wheel so hub center is at origin and rim sits symmetrically
+  return wheel
 }
 
 module.exports = { main }
+

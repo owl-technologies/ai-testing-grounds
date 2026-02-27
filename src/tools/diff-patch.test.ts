@@ -24,7 +24,7 @@ async function run() {
       patch,
     });
 
-    const parsed = JSON.parse(result);
+    const parsed = JSON.parse(result.response);
     assert.equal(parsed.ok, true, 'Expected diff-patch tool to succeed');
     assert.equal(parsed.file, updatedContent, 'Expected diff-patch to return the modified file');
 

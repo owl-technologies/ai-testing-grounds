@@ -22,8 +22,13 @@ export type SingleAgentStepResult = {
 
 export interface ToolDefinition {
   descriptor: Tool;
-  run(args: Record<string, unknown>): Promise<string>;
+  run(args: Record<string, unknown>): Promise<ToolRunResult>;
 }
+
+export type ToolRunResult = {
+  response: string;
+  images?: string[];
+};
 
 export const SYSTEM_PROMPT = 
 `You are an agent responsible for interacting with user and generating and evaluating the JSCAD artifact. 
@@ -49,7 +54,8 @@ A valid JSCAD file should have a main function and "module.exports = { main }".
 Tools:
 - apply-patch(patch): apply a freeform patch to edit files.
 - jscad-validate(file): validate the JSCAD file.
-- jscad-render-2d(file): render a PNG snapshot of the JSCAD.
+- jscad-render-view(file): render a composite PNG snapshot of the JSCAD.
+- jscad-render-perspective(file): render a PNG perspective snapshot of the JSCAD.
 
 Patch rules:
 - The patch must start with "*** Begin Patch" and end with "*** End Patch".
@@ -72,9 +78,9 @@ Edit strategy:
 - After each change, validate or render if needed, then decide the next step.
 - Summarize your observations in the "evaluation" field and any follow-up actions in "notes".
 - Once the code satisfies the goal, check if it compiles using the jscad-validate tool
-- Once the code compiles check if it renders correctly using the jscad-render-2d tool
+- Once the code compiles check if it renders correctly using the jscad-render-view tool
 
-Available tools: jscad-validate, jscad-render-2d, apply-patch.`;
+Available tools: jscad-validate, jscad-render-view, jscad-render-perspective, apply-patch.`;
 
 export const formContent = (
   { goal, contextLine, outputPath, iteration, maxIterations, currentCode }: {

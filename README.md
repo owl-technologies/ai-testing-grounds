@@ -1,6 +1,6 @@
 # AI Testing Grounds
 
-This standalone TypeScript CLI lets you iterate on a JSCAD editing agent workflow (Ollama or OpenAI) without a UI. The agent uses tool calls (`diff-patch`, `jscad-validate`, `jscad-render-2d`) to edit and evaluate a JSCAD file.
+This standalone TypeScript CLI lets you iterate on a JSCAD editing agent workflow (Ollama or OpenAI) without a UI. The agent uses tool calls (`diff-patch`, `jscad-validate`, `jscad-render-view`, `jscad-render-perspective`) to edit and evaluate a JSCAD file.
 
 ## Setup
 
@@ -41,4 +41,4 @@ npm test
 - `src/config.ts` holds the system prompt and tool descriptors.
 - `src/agents/ollama-jscad-editor.ts` runs the Ollama agent with tool calling.
 - `src/agents/openai-jscad-editor.ts` runs the OpenAI agent with tool calling.
-- `src/tools/` provides `diff-patch`, `jscad-validate`, and `jscad-render-2d`.
+- `src/tools/` provides `diff-patch`, `jscad-validate`, `jscad-render-view`, and `jscad-render-perspective`.

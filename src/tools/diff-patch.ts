@@ -33,13 +33,13 @@ Example input:
   },
 };
 
-const run = async (args: Record<string, unknown>): Promise<string> => {
+const run = async (args: Record<string, unknown>): Promise<{ response: string }> => {
   const file = typeof args.file === 'string' ? args.file.trim() : '';
   if (!file) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' }) };
   }
   if (typeof args.patch !== 'string') {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "patch" must be a string.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid tool input: "patch" must be a string.' }) };
   }
 
   const patch = args.patch;
@@ -49,7 +49,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && (error as any).code !== 'ENOENT') {
       const message = error instanceof Error ? error.message : String(error);
-      return JSON.stringify({ ok: false, error: `Unable to read file: ${message}` });
+      return { response: JSON.stringify({ ok: false, error: `Unable to read file: ${message}` }) };
     }
   }
 
@@ -95,15 +95,17 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
       continue;
     }
     if (!currentHunk) {
-      return JSON.stringify({
-        ok: false,
-        error:
-          'Invalid patch: missing hunk header. Example:\n@@ -0,0 +1,1 @@\n+// line 1',
-      });
+      return {
+        response: JSON.stringify({
+          ok: false,
+          error:
+            'Invalid patch: missing hunk header. Example:\n@@ -0,0 +1,1 @@\n+// line 1',
+        }),
+      };
     }
     const prefix = line[0];
     if (prefix !== ' ' && prefix !== '+' && prefix !== '-') {
-      return JSON.stringify({ ok: false, error: `Invalid patch line prefix: "${prefix}".` });
+      return { response: JSON.stringify({ ok: false, error: `Invalid patch line prefix: "${prefix}".` }) };
     }
     const type = prefix === ' ' ? 'context' : prefix === '+' ? 'add' : 'remove';
     currentHunk.lines.push({ type, text: line.slice(1) });
@@ -116,7 +118,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
   for (const hunk of hunks) {
     const targetIndex = Math.max(hunk.oldStart - 1, 0);
     if (sourceIndex > targetIndex) {
-      return JSON.stringify({ ok: false, error: 'Invalid patch: overlapping hunk or out-of-order line numbers.' });
+      return { response: JSON.stringify({ ok: false, error: 'Invalid patch: overlapping hunk or out-of-order line numbers.' }) };
     }
     if (sourceIndex < targetIndex) {
       outputLines.push(...sourceLines.slice(sourceIndex, targetIndex));
@@ -128,11 +130,11 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         continue;
       }
       if (sourceIndex >= sourceLines.length) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: hunk exceeds file length.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: hunk exceeds file length.' }) };
       }
       const currentLine = sourceLines[sourceIndex];
       if (currentLine !== hunkLine.text) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' }) };
       }
       if (hunkLine.type === 'context') {
         outputLines.push(currentLine);
@@ -154,13 +156,10 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     await fs.writeFile(file, updatedContent, 'utf-8');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return JSON.stringify({ ok: false, error: `Unable to write file: ${message}` });
+    return { response: JSON.stringify({ ok: false, error: `Unable to write file: ${message}` }) };
   }
 
-  return JSON.stringify({
-    ok: true,
-    file: updatedContent,
-  });
+  return { response: JSON.stringify({ ok: true, file: updatedContent }) };
 };
 
 export const diffPatchTool: ToolDefinition = {

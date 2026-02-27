@@ -1,7 +1,7 @@
 import assert from 'assert/strict';
 import fs from 'fs';
 import path from 'path';
-import { jscadRender2dTool } from './jscad-render-2d';
+import { jscadRenderPerspectiveTool } from './jscad-render-perspective';
 
 async function run() {
   const sourcePath = path.join(process.cwd(), 'jscad', 'hip-implant.jscad');
@@ -9,26 +9,27 @@ async function run() {
   if (fs.existsSync(outputPath)) {
     fs.unlinkSync(outputPath);
   }
-  const renderResult = await jscadRender2dTool.run({ file: sourcePath });
-  const okParsed = JSON.parse(renderResult);
+  const renderResult = await jscadRenderPerspectiveTool.run({ file: sourcePath });
+  const okParsed = JSON.parse(renderResult.response);
   assert.equal(okParsed.ok, true, `Expected render to succeed but got error: ${okParsed.error ?? 'unknown'}`);
   assert.equal(okParsed.path, outputPath, 'Expected render to return the expected output path');
-  assert.ok(typeof okParsed.imageBase64 === 'string' && okParsed.imageBase64.length > 0, 'Expected render to return base64 image data');
+  assert.equal(okParsed.imageBase64, 'attached', 'Expected render to indicate attached image data');
   assert.ok(fs.existsSync(outputPath), 'Expected render output file to exist');
-  const decoded = Buffer.from(okParsed.imageBase64, 'base64');
+  const base64Payload = okParsed.imageBase64.replace(/^data:image\/png;base64,/, '');
+  const decoded = Buffer.from(base64Payload, 'base64');
   assert.ok(decoded.length > 0, 'Expected decoded image buffer to be non-empty');
 
-  const badResult = await jscadRender2dTool.run({ file: '' });
-  const badParsed = JSON.parse(badResult);
+  const badResult = await jscadRenderPerspectiveTool.run({ file: '' });
+  const badParsed = JSON.parse(badResult.response);
   assert.equal(badParsed.ok, false, 'Expected empty source to fail rendering');
 }
 
 run()
   .then(() => {
-    console.log('jscad-render-2d tests passed');
+    console.log('jscad-render-perspective tests passed');
   })
   .catch((error) => {
-    console.error('jscad-render-2d tests failed');
+    console.error('jscad-render-perspective tests failed');
     console.error(error);
     process.exitCode = 1;
   });

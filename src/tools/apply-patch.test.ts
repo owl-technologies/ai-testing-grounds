@@ -25,7 +25,7 @@ async function run() {
     ].join('\n');
 
     const updateResult = await applyPatchTool.run({ patch: updatePatch });
-    const updateParsed = JSON.parse(updateResult);
+    const updateParsed = JSON.parse(updateResult.response);
     assert.equal(updateParsed.ok, true, 'Expected update patch to succeed');
     assert.equal(updateParsed.file, updatedContent, 'Expected apply-patch to return updated content');
 
@@ -42,7 +42,7 @@ async function run() {
     ].join('\n');
 
     const addResult = await applyPatchTool.run({ patch: addPatch });
-    const addParsed = JSON.parse(addResult);
+    const addParsed = JSON.parse(addResult.response);
     assert.equal(addParsed.ok, true, 'Expected add patch to succeed');
     assert.equal(addParsed.file, 'alpha\nbeta\n', 'Expected add patch to return file content');
 

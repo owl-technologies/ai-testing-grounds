@@ -7,8 +7,8 @@ import {
   SingleAgentStepResult,
   SYSTEM_PROMPT
 } from '../config';
-import { log } from '../logger';
-import { executeAgentTool, getAgentToolSchemas, isAgentTool } from '../tools';
+import { log as baseLog } from '../logger';
+import { executeAgentTool, getAgentToolSchemas, isAgentTool } from '../tools/tool-index';
 
 
 const DEFAULT_MODEL =
@@ -17,6 +17,8 @@ const DEFAULT_MODEL =
 'qwen3-vl:8b';
 // 'mistral:latest'; 
 // 'qwen2.5-coder:latest';
+const LOG_AGENT = `ollama.${DEFAULT_MODEL}`;
+const log = (...args: any[]) => baseLog(LOG_AGENT, ...args);
 
 export class OllamaJSCADEditor {
 
@@ -61,9 +63,9 @@ export class OllamaJSCADEditor {
       stream: false,
       keep_alive: -1,
     } as ChatRequest & { stream: false };
-    await log('ollama', 'ollama.chat request', chatArgs);
+    await log('ollama.chat request', chatArgs);
     const response = await ollama.chat(chatArgs);
-    await log('ollama', 'ollama.chat response', response);
+    await log('ollama.chat response', response);
 
     const firstMessage = response.message as Message | undefined;
     const { content, ...rest } = firstMessage || {};
@@ -85,26 +87,26 @@ export class OllamaJSCADEditor {
       const normalized = this.normalizeToolCall(toolCall);
       if (normalized.toolError) {
         toolError = normalized.toolError;
-        await log('ollama', 'tool.error', toolError);
+        await log('tool.error', toolError);
       } else if (normalized.toolName) {
         let toolImages: string[] | undefined;
-        await log('ollama', 'tool.call', { name: normalized.toolName, args: normalized.args || {} });
-        toolOutput = await executeAgentTool(
+        await log('tool.call', { name: normalized.toolName, args: normalized.args || {} });
+        const toolResult = await executeAgentTool(
           normalized.toolName,
           normalized.args || {}
         );
-        await log('ollama', 'tool.response', toolOutput);
-        if (normalized.toolName === 'jscad-render-2d') {
-          try {
-            const parsedTool = JSON.parse(toolOutput) as { ok?: boolean; imageBase64?: string };
-            if (parsedTool?.ok === true && typeof parsedTool.imageBase64 === 'string') {
-              toolImages = [parsedTool.imageBase64];
-              console.debug(`Ollama tool output image attached (${Math.round(parsedTool.imageBase64.length / 1024)} KB).`);
+        toolOutput = toolResult.response;
+        await log('tool.response', toolResult);
+        if (toolResult.images && toolResult.images.length > 0) {
+          toolImages = toolResult.images.map((image) => {
+            const base64Marker = 'base64,';
+            if (image.startsWith('data:') && image.includes(base64Marker)) {
+              return image.slice(image.indexOf(base64Marker) + base64Marker.length);
             }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.debug('Failed to attach rendered image:', colors.red(message));
-          }
+            return image;
+          });
+          const totalSizeKb = toolImages.reduce((acc, img) => acc + img.length, 0) / 1024;
+          console.debug(`Ollama tool output images attached (${Math.round(totalSizeKb)} KB).`);
         }
         messages.push(firstMessage as { role: string; content: string; tool_calls?: ToolCall[] });
         messages.push({
@@ -128,12 +130,12 @@ export class OllamaJSCADEditor {
         stream: false,
         keep_alive: -1,
       } as ChatRequest & { stream: false };
-      await log('ollama', 'ollama.chat request', followUpArgs);
+      await log('ollama.chat request', followUpArgs);
       const followUp = await ollama.chat(followUpArgs);
-      await log('ollama', 'ollama.chat response', followUp);
+      await log('ollama.chat response', followUp);
       const followUpMessage = followUp.message as Message | undefined;
       const { content: followUpContent } = followUpMessage || {};
-      console.debug('followUp.message from Ollama:', colors.yellow(JSON.stringify(followUpMessage, null, 2)));
+      // console.debug('followUp.message from Ollama:', colors.yellow(JSON.stringify(followUpMessage, null, 2)));
       const prettyFollowUp = followUpContent
         ? followUpContent.replace(/\\n/g, '\n').replace(/\\"/g, '"')
         : undefined;

@@ -6,8 +6,8 @@ import { Tool } from 'ollama';
 const descriptor: Tool = {
   type: 'function',
   function: {
-    name: 'jscad-render-2d',
-    description: 'Render JSCAD to a PNG 2D snapshot and return base64 image data when possible.',
+    name: 'jscad-render-view',
+    description: 'Render JSCAD to a composite PNG snapshot with 4 views (top, perspective, front, right) and return a PNG data URL when possible.',
     parameters: {
       type: 'object',
       required: ['file'],
@@ -24,10 +24,10 @@ const descriptor: Tool = {
 const formatError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-const run = async (args: Record<string, unknown>): Promise<string> => {
+const run = async (args: Record<string, unknown>): Promise<{ response: string; images?: string[] }> => {
   const file = typeof args.file === 'string' ? args.file.trim() : '';
   if (!file) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' }) };
   }
   try {
     const fs = await import('fs/promises');
@@ -35,18 +35,22 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     const source = await fs.readFile(filePath, 'utf-8');
     const rendererModules = loadRendererModules();
     if (!rendererModules.ok) {
-      return JSON.stringify({ ok: false, error: rendererModules.error });
+      return { response: JSON.stringify({ ok: false, error: rendererModules.error }) };
     }
 
-    const { prepareRender, drawCommands, cameras, entitiesFromSolids, writeContextToFile, createRenderer } = rendererModules;
-    const width = 512;
-    const height = 512;
-    const gl = createRenderer(width, height, { preserveDrawingBuffer: true });
+    const { prepareRender, drawCommands, cameras, entitiesFromSolids, contextToBuffer, writeBufferToFile, createRenderer } = rendererModules;
+    const viewWidth = 512;
+    const viewHeight = 512;
+    const compositeWidth = viewWidth * 2;
+    const compositeHeight = viewHeight * 2;
+    const gl = createRenderer(viewWidth, viewHeight, { preserveDrawingBuffer: true });
     if (!gl) {
-      return JSON.stringify({
-        ok: false,
-        error: 'Unable to create a headless WebGL context. Install the optional "gl" dependency.',
-      });
+      return {
+        response: JSON.stringify({
+          ok: false,
+          error: 'Unable to create a headless WebGL context. Install the optional "gl" dependency.',
+        }),
+      };
     }
 
     const geometry = await compileJscad(source);
@@ -92,23 +96,28 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         hasBounds = true;
       }
     }
+
+    let centerX = 0;
+    let centerY = 0;
+    let centerZ = 0;
+    let distance = 1;
     if (hasBounds) {
       if (!hasZBounds) {
         minZ = 0;
         maxZ = 0;
       }
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      const centerZ = (minZ + maxZ) / 2;
+      centerX = (minX + maxX) / 2;
+      centerY = (minY + maxY) / 2;
+      centerZ = (minZ + maxZ) / 2;
       const sizeX = maxX - minX;
       const sizeY = maxY - minY;
       const sizeZ = maxZ - minZ;
       const radius = Math.max(0.5 * Math.hypot(sizeX, sizeY, sizeZ), 1);
       const fov = typeof camera.fov === 'number' ? camera.fov : Math.PI / 4;
-      const aspect = width / height;
+      const aspect = viewWidth / viewHeight;
       const fovX = 2 * Math.atan(Math.tan(fov / 2) * aspect);
       const limitingFov = Math.min(fov, fovX);
-      const distance = radius / Math.sin(limitingFov / 2);
+      distance = radius / Math.sin(limitingFov / 2);
       const dirX = 1;
       const dirY = 1;
       const dirZ = Math.SQRT2;
@@ -121,9 +130,26 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         centerZ + (dirZ / dirLen) * scaledDistance,
       ];
       camera.up = [0, 0, 1];
+      distance = scaledDistance;
+    } else {
+      const fallbackTarget = camera.target as number[] | undefined;
+      const fallbackPosition = camera.position as number[] | undefined;
+      centerX = fallbackTarget?.[0] ?? 0;
+      centerY = fallbackTarget?.[1] ?? 0;
+      centerZ = fallbackTarget?.[2] ?? 0;
+      distance = Math.hypot(
+        (fallbackPosition?.[0] ?? 0) - centerX,
+        (fallbackPosition?.[1] ?? 0) - centerY,
+        (fallbackPosition?.[2] ?? 0) - centerZ,
+      ) || 1;
     }
-    perspectiveCamera.setProjection(camera, camera, { width, height });
-    perspectiveCamera.update(camera, camera);
+
+    const target = [centerX, centerY, centerZ];
+    const perspectivePosition = [
+      (camera.position as number[] | undefined)?.[0] ?? centerX + distance,
+      (camera.position as number[] | undefined)?.[1] ?? centerY + distance,
+      (camera.position as number[] | undefined)?.[2] ?? centerZ + distance,
+    ];
 
     const renderOptions = {
       camera,
@@ -139,23 +165,69 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     };
 
     const render = prepareRender(renderOptions);
-    render(renderOptions);
+    const compositeBuffer = new Uint8Array(compositeWidth * compositeHeight * 4);
+
+    const views = [
+      {
+        position: [centerX, centerY, centerZ + distance],
+        up: [0, 1, 0],
+        offsetX: 0,
+        offsetY: viewHeight,
+      },
+      {
+        position: perspectivePosition,
+        up: [0, 0, 1],
+        offsetX: viewWidth,
+        offsetY: viewHeight,
+      },
+      {
+        position: [centerX, centerY + distance, centerZ],
+        up: [0, 0, 1],
+        offsetX: 0,
+        offsetY: 0,
+      },
+      {
+        position: [centerX + distance, centerY, centerZ],
+        up: [0, 0, 1],
+        offsetX: viewWidth,
+        offsetY: 0,
+      },
+    ];
+
+    for (const view of views) {
+      camera.position = view.position;
+      camera.target = target;
+      camera.up = view.up;
+      perspectiveCamera.setProjection(camera, camera, { width: viewWidth, height: viewHeight });
+      perspectiveCamera.update(camera, camera);
+      render(renderOptions);
+      const viewBuffer = contextToBuffer(gl, viewWidth, viewHeight, 4);
+      for (let y = 0; y < viewHeight; y += 1) {
+        const sourceOffset = y * viewWidth * 4;
+        const targetOffset = ((view.offsetY + y) * compositeWidth + view.offsetX) * 4;
+        compositeBuffer.set(viewBuffer.subarray(sourceOffset, sourceOffset + viewWidth * 4), targetOffset);
+      }
+    }
 
     const outputPath = path.join(
       path.dirname(filePath),
       `${path.basename(filePath, path.extname(filePath))}.render.png`
     );
-    writeContextToFile(gl, width, height, 4, outputPath);
+    writeBufferToFile(compositeBuffer, compositeWidth, compositeHeight, outputPath);
 
     const pngBuffer = await fs.readFile(outputPath);
     const imageBase64 = pngBuffer.toString('base64');
-    return JSON.stringify({ ok: true, imageBase64, path: outputPath });
+    const imageDataUrl = `data:image/png;base64,${imageBase64}`;
+    return {
+      response: JSON.stringify({ ok: true, imageBase64: 'attached', path: outputPath }),
+      images: [imageDataUrl],
+    };
   } catch (error) {
-    return JSON.stringify({ ok: false, error: formatError(error) });
+    return { response: JSON.stringify({ ok: false, error: formatError(error) }) };
   }
 };
 
-export const jscadRender2dTool: ToolDefinition = {
+export const jscadRenderViewTool: ToolDefinition = {
   descriptor,
   run,
 };
@@ -177,7 +249,8 @@ const loadRendererModules = (): {
     };
   };
   entitiesFromSolids: (options: Record<string, unknown>, ...geometries: unknown[]) => unknown[];
-  writeContextToFile: (gl: unknown, width: number, height: number, channels: number, filePath: string) => void;
+  contextToBuffer: (gl: unknown, width: number, height: number, depth: number) => Uint8Array;
+  writeBufferToFile: (buffer: Uint8Array, width: number, height: number, filePath: string) => void;
   createRenderer: (width: number, height: number, options: Record<string, unknown>) => unknown;
 } | {
   ok: false;
@@ -185,7 +258,7 @@ const loadRendererModules = (): {
 } => {
   try {
     const { prepareRender, drawCommands, cameras, entitiesFromSolids } = require('@jscad/regl-renderer');
-    const { writeContextToFile } = require('@jscad/img-utils');
+    const { contextToBuffer, writeBufferToFile } = require('@jscad/img-utils');
     const createRenderer = require('gl');
     return {
       ok: true,
@@ -193,7 +266,8 @@ const loadRendererModules = (): {
       drawCommands,
       cameras,
       entitiesFromSolids,
-      writeContextToFile,
+      contextToBuffer,
+      writeBufferToFile,
       createRenderer,
     };
   } catch (error) {

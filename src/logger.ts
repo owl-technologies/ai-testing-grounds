@@ -16,7 +16,7 @@ const formatFileName = (agent: string, when: Date) => {
   const month = MONTHS[when.getMonth()] ?? 'Unknown';
   const day = pad2(when.getDate());
   const year = when.getFullYear();
-  return `${agent}-${hours}.${minutes}-${weekday}.${month}.${day}.${year}.log`;
+  return `${agent}.${hours}.${minutes}-${weekday}.${month}.${day}.${year}.log`;
 };
 
 const resolveLogFile = (agent: string) => {

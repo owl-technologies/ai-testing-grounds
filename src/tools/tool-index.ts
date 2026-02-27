@@ -1,13 +1,15 @@
 import { colors } from 'kiss-framework';
-import { ToolDefinition } from '../config';
+import { ToolDefinition, ToolRunResult } from '../config';
 import { applyPatchTool } from './apply-patch';
-import { jscadRender2dTool } from './jscad-render-2d';
+import { jscadRenderViewTool } from './jscad-render-view';
+import { jscadRenderPerspectiveTool } from './jscad-render-perspective';
 import { jscadValidateTool } from './jscad-validate';
 import { Tool } from 'ollama';
 
 const toolDefinitions: ToolDefinition[] = [
   jscadValidateTool,
-  jscadRender2dTool,
+  jscadRenderViewTool,
+  jscadRenderPerspectiveTool,
   applyPatchTool,
 ];
 
@@ -18,13 +20,19 @@ export const getAgentToolSchemas = (): Tool[] => toolDefinitions.map((tool) => t
 export const executeAgentTool = async (
   name: string,
   args: Record<string, unknown>
-): Promise<string> => {
+): Promise<ToolRunResult> => {
   const tool = toolMap.get(name);
   if (!tool) {
-    return Promise.resolve(JSON.stringify({ ok: false, error: `Unknown tool: ${name}` }));
+    return Promise.resolve({ response: JSON.stringify({ ok: false, error: `Unknown tool: ${name}` }) });
   }
-  let result = await tool.run(args);
-  console.debug(`Tool "${name}" executed with args:`, args, 'Result:', colors.cyan(JSON.stringify(result)));
+  const result = await tool.run(args);
+  const resStr = result.response;
+  console.debug(
+    `Tool "${name}" executed with args:`,
+    args,
+    'Result:',
+    colors.cyan(resStr.substring(0, 500) + (resStr.length > 500 ? '... [truncated]' : ''))
+  );
   return result;
 };
 

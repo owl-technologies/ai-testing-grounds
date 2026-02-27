@@ -37,10 +37,10 @@ type UpdateHunk = {
 
 type PatchHunk = AddHunk | DeleteHunk | UpdateHunk;
 
-const run = async (args: Record<string, unknown>): Promise<string> => {
+const run = async (args: Record<string, unknown>): Promise<{ response: string }> => {
   const patchInput = typeof args?.patch === 'string' ? args.patch : '';
   if (!patchInput.trim()) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "patch" must be a non-empty string.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid tool input: "patch" must be a non-empty string.' }) };
   }
 
   const lines = patchInput.split(/\r?\n/);
@@ -49,7 +49,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     i += 1;
   }
   if (i >= lines.length || lines[i] !== '*** Begin Patch') {
-    return JSON.stringify({ ok: false, error: 'Invalid patch: missing "*** Begin Patch" header.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing "*** Begin Patch" header.' }) };
   }
   i += 1;
 
@@ -70,7 +70,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     if (line.startsWith('*** Add File: ')) {
       const file = line.slice('*** Add File: '.length).trim();
       if (!file) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Add File" header.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Add File" header.' }) };
       }
       i += 1;
       const addLines: string[] = [];
@@ -80,13 +80,13 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
           break;
         }
         if (!current.startsWith('+')) {
-          return JSON.stringify({ ok: false, error: 'Invalid patch: add file lines must start with "+".' });
+          return { response: JSON.stringify({ ok: false, error: 'Invalid patch: add file lines must start with "+".' }) };
         }
         addLines.push(current.slice(1));
         i += 1;
       }
       if (addLines.length === 0) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: add file hunk has no content.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: add file hunk has no content.' }) };
       }
       hunks.push({ type: 'add', file, lines: addLines });
       continue;
@@ -94,7 +94,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     if (line.startsWith('*** Delete File: ')) {
       const file = line.slice('*** Delete File: '.length).trim();
       if (!file) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Delete File" header.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Delete File" header.' }) };
       }
       i += 1;
       hunks.push({ type: 'delete', file });
@@ -103,14 +103,14 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     if (line.startsWith('*** Update File: ')) {
       const file = line.slice('*** Update File: '.length).trim();
       if (!file) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Update File" header.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Update File" header.' }) };
       }
       i += 1;
       let moveTo: string | undefined;
       if (i < lines.length && lines[i].startsWith('*** Move to: ')) {
         moveTo = lines[i].slice('*** Move to: '.length).trim();
         if (!moveTo) {
-          return JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Move to" header.' });
+          return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing path in "*** Move to" header.' }) };
         }
         i += 1;
       }
@@ -137,7 +137,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         }
         const prefix = current[0];
         if (prefix !== ' ' && prefix !== '+' && prefix !== '-') {
-          return JSON.stringify({ ok: false, error: `Invalid patch line prefix: "${prefix}".` });
+          return { response: JSON.stringify({ ok: false, error: `Invalid patch line prefix: "${prefix}".` }) };
         }
         const type = prefix === ' ' ? 'context' : prefix === '+' ? 'add' : 'remove';
         currentChunk.push({ type, text: current.slice(1) });
@@ -150,11 +150,11 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
       continue;
     }
 
-    return JSON.stringify({ ok: false, error: `Invalid patch: unexpected line "${line}".` });
+    return { response: JSON.stringify({ ok: false, error: `Invalid patch: unexpected line "${line}".` }) };
   }
 
   if (!sawEndPatch) {
-    return JSON.stringify({ ok: false, error: 'Invalid patch: missing "*** End Patch" footer.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid patch: missing "*** End Patch" footer.' }) };
   }
 
   const ensureDir = async (filePath: string) => {
@@ -171,11 +171,11 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
     if (hunk.type === 'add') {
       try {
         await fs.stat(hunk.file);
-        return JSON.stringify({ ok: false, error: `Unable to add file: "${hunk.file}" already exists.` });
+        return { response: JSON.stringify({ ok: false, error: `Unable to add file: "${hunk.file}" already exists.` }) };
       } catch (error) {
         if (error && typeof error === 'object' && 'code' in error && (error as any).code !== 'ENOENT') {
           const message = error instanceof Error ? error.message : String(error);
-          return JSON.stringify({ ok: false, error: `Unable to add file: ${message}` });
+          return { response: JSON.stringify({ ok: false, error: `Unable to add file: ${message}` }) };
         }
       }
       await ensureDir(hunk.file);
@@ -185,7 +185,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         changedFiles[hunk.file] = content;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return JSON.stringify({ ok: false, error: `Unable to write file: ${message}` });
+        return { response: JSON.stringify({ ok: false, error: `Unable to write file: ${message}` }) };
       }
       continue;
     }
@@ -196,7 +196,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         deletedFiles.push(hunk.file);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return JSON.stringify({ ok: false, error: `Unable to delete file: ${message}` });
+        return { response: JSON.stringify({ ok: false, error: `Unable to delete file: ${message}` }) };
       }
       continue;
     }
@@ -206,7 +206,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
       currentContent = await fs.readFile(hunk.file, 'utf-8');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return JSON.stringify({ ok: false, error: `Unable to read file: ${message}` });
+      return { response: JSON.stringify({ ok: false, error: `Unable to read file: ${message}` }) };
     }
 
     const hadTrailingNewline = currentContent.endsWith('\n');
@@ -239,7 +239,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
         }
       }
       if (matchIndex === -1) {
-        return JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' });
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' }) };
       }
 
       const output: string[] = [];
@@ -253,13 +253,13 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
           outputCount += 1;
           continue;
         }
-        if (sourceIndex >= workingLines.length) {
-          return JSON.stringify({ ok: false, error: 'Invalid patch: hunk exceeds file length.' });
-        }
-        const currentLine = workingLines[sourceIndex];
-        if (currentLine !== line.text) {
-          return JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' });
-        }
+      if (sourceIndex >= workingLines.length) {
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: hunk exceeds file length.' }) };
+      }
+      const currentLine = workingLines[sourceIndex];
+      if (currentLine !== line.text) {
+        return { response: JSON.stringify({ ok: false, error: 'Invalid patch: context does not match file contents.' }) };
+      }
         if (line.type === 'context') {
           output.push(currentLine);
           outputCount += 1;
@@ -287,13 +287,13 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return JSON.stringify({ ok: false, error: `Unable to write file: ${message}` });
+      return { response: JSON.stringify({ ok: false, error: `Unable to write file: ${message}` }) };
     }
   }
 
   const changedKeys = Object.keys(changedFiles);
   if (changedKeys.length === 1 && deletedFiles.length === 0) {
-    return JSON.stringify({ ok: true, file: changedFiles[changedKeys[0]] });
+    return { response: JSON.stringify({ ok: true, file: changedFiles[changedKeys[0]] }) };
   }
   const response: { ok: true; files?: Record<string, string>; deleted?: string[] } = { ok: true };
   if (changedKeys.length > 0) {
@@ -302,7 +302,7 @@ const run = async (args: Record<string, unknown>): Promise<string> => {
   if (deletedFiles.length > 0) {
     response.deleted = deletedFiles;
   }
-  return JSON.stringify(response);
+  return { response: JSON.stringify(response) };
 };
 
 export const applyPatchTool: ToolDefinition = {

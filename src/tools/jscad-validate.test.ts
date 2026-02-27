@@ -35,19 +35,19 @@ async function run() {
     const okPath = path.join(tempDir, 'valid.jscad');
     await fs.writeFile(okPath, validSource, 'utf-8');
     const okResult = await jscadValidateTool.run({ file: okPath });
-    const okParsed = JSON.parse(okResult);
+    const okParsed = JSON.parse(okResult.response);
     assert.equal(okParsed.ok, true, 'Expected valid source to pass validation');
 
     const badPath = path.join(tempDir, 'invalid.jscad');
     await fs.writeFile(badPath, invalidSource, 'utf-8');
     const badResult = await jscadValidateTool.run({ file: badPath });
-    const badParsed = JSON.parse(badResult);
+    const badParsed = JSON.parse(badResult.response);
     assert.equal(badParsed.ok, false, 'Expected invalid source to fail validation');
 
     const syntaxPath = path.join(tempDir, 'syntax.jscad');
     await fs.writeFile(syntaxPath, invalidSyntaxSource, 'utf-8');
     const syntaxResult = await jscadValidateTool.run({ file: syntaxPath });
-    const syntaxParsed = JSON.parse(syntaxResult);
+    const syntaxParsed = JSON.parse(syntaxResult.response);
     assert.equal(syntaxParsed.ok, false, 'Expected syntax error to fail validation');
     assert.ok(syntaxParsed.error && typeof syntaxParsed.error === 'string', 'Expected syntax error to include a message');
   } finally {

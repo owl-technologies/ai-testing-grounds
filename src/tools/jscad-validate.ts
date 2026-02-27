@@ -24,18 +24,18 @@ const descriptor: Tool = {
 const formatError = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-const run = async (args: Record<string, unknown>): Promise<string> => {
+const run = async (args: Record<string, unknown>): Promise<{ response: string }> => {
   const file = typeof args.file === 'string' ? args.file.trim() : '';
   if (!file) {
-    return JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' });
+    return { response: JSON.stringify({ ok: false, error: 'Invalid tool input: "file" must be a non-empty string.' }) };
   }
   try {
     const fs = await import('fs/promises');
     const source = await fs.readFile(file, 'utf-8');
     await compileJscad(source);
-    return JSON.stringify({ ok: true, error: null });
+    return { response: JSON.stringify({ ok: true, error: null }) };
   } catch (error) {
-    return JSON.stringify({ ok: false, error: formatError(error) });
+    return { response: JSON.stringify({ ok: false, error: formatError(error) }) };
   }
 };
 

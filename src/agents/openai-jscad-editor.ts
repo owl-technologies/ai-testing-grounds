@@ -2,15 +2,21 @@ import { Agent, run, tool, type AgentInputItem } from '@openai/agents';
 import { assert, colors } from 'kiss-framework';
 import { z } from 'zod';
 
-import { executeAgentTool, getAgentToolSchemas } from '../tools';
+import { executeAgentTool, getAgentToolSchemas } from '../tools/tool-index';
 import { formContent, SingleAgentStepOptions, SingleAgentStepResult, SYSTEM_PROMPT } from '../config';
-import { log } from '../logger';
+import { log as baseLog } from '../logger';
 
-const DEFAULT_MODEL = 'gpt-5-mini';
+const DEFAULT_MODEL = 
+// 'gpt-5-mini';
+//'gpt-5.1-codex-mini';
+'gpt-5.3-codex';
+const LOG_AGENT = `openai.${DEFAULT_MODEL}`;
+const log = (...args: any[]) => baseLog(LOG_AGENT, ...args);
 
 type ToolState = {
   toolOutput?: string;
   toolError?: string;
+  toolImages?: string[];
 };
 
 export class OpenAiJSCADEditor {
@@ -57,24 +63,36 @@ export class OpenAiJSCADEditor {
             toolState.toolError = message;
             toolState.toolOutput = output;
             console.debug('OpenAI tool call error:', colors.red(message));
-            await log('openai', 'tool.error', message);
+            await log('tool.error', message);
             return output;
           }
           try {
             console.debug(
               `OpenAI tool call: ${colors.blue(toolName)} args: ${colors.yellow(JSON.stringify(toolInput, null, 2))}`
             );
+            await log('tool.call', { name: toolName, args: toolInput });
             const output = await executeAgentTool(toolName, toolInput as Record<string, unknown>);
-            toolState.toolOutput = output;
-            // console.debug(`OpenAI tool output: ${colors.cyan(output)}`);
-            return output;
+            toolState.toolOutput = output.response;
+            toolState.toolImages = output.images;
+            await log('tool.response', output);
+            if (output.images && output.images.length > 0) {
+              const items: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [];
+              if (output.response) {
+                items.push({ type: 'text', text: output.response });
+              }
+              for (const image of output.images) {
+                items.push({ type: 'image', image });
+              }
+              return items;
+            }
+            return output.response;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const output = JSON.stringify({ ok: false, error: message });
             toolState.toolError = message;
             toolState.toolOutput = output;
             console.debug('OpenAI tool execution error:', colors.red(message));
-            await log('openai', 'tool.error', message);
+            await log('tool.error', message);
             return output;
           }
         },
@@ -101,7 +119,6 @@ export class OpenAiJSCADEditor {
       model: ${DEFAULT_MODEL},
       message-goal: ${input.goal},
       message-roles: ${colors.green('system, user')},
-      
       tool-names: ${colors.green(toolSchemas.map((t) => t.function.name).join(', '))},
       `);
 
@@ -128,12 +145,12 @@ export class OpenAiJSCADEditor {
     //   ];
     // }
 
-    await log('openai', 'openai.run request', { model: DEFAULT_MODEL, input: runInput, tools: toolSchemas });
+    await log('openai.run request', { model: DEFAULT_MODEL, input: runInput, tools: toolSchemas });
     const result = await run(agent, runInput);
-    await log('openai', 'openai.run response', result);
+    await log('openai.run response', result);
 
     const finalOutput = result.finalOutput;
-    console.debug('OpenAI finalOutput:', colors.yellow(JSON.stringify(finalOutput, null, 2)));
+    // console.debug('OpenAI finalOutput:', colors.yellow(JSON.stringify(finalOutput, null, 2)));
     // if (typeof finalOutput === 'string') {
     //   const prettyOutput = finalOutput.replace(/\\n/g, '\n').replace(/\\"/g, '"');
     //   console.debug('OpenAI finalOutput (pretty):', colors.yellow(prettyOutput));
